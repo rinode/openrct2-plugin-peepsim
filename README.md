@@ -1,15 +1,28 @@
-# OpenRCT2 Plugin Boilerplate
+# PeepSim - OpenRCT2 Plugin
 
-A modern boilerplate for creating OpenRCT2 plugins with ES6+ JavaScript, automatic transpilation, and CI/CD via GitHub Actions.
+A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct control — move them around the map, customise their appearance, and queue up actions.
 
 ## Features
 
-- ES6+ syntax with automatic transpilation to ES5
-- Multi-file project support with Rollup bundling
-- Hot-reloading during development with watch mode
-- Automated releases via GitHub Actions
-- Version management from package.json
-- Modern tooling (Babel 7, Rollup 4)
+### Control Tab
+- Select any guest from a dropdown or spawn a new one
+- Live viewport that follows the selected guest
+- Guest stats display (happiness, hunger, thirst, cash)
+- **Move To** — click a tile on the map to walk the guest there, with tile highlighting
+- **Follow** — re-center the viewport on the guest
+- **Disable AI** — freeze the guest when idle, preventing autonomous behaviour
+
+### Appearance Tab
+- Change shirt and pants colours
+- Toggle accessories: hat, balloon, umbrella, sunglasses
+- Colour pickers for hat, balloon, and umbrella
+- Accessories are enforced and persist even if the game tries to remove them
+
+### Queue Tab
+- View all queued move actions in a list
+- Add actions from the queue tab with **+ Move To**
+- Delete individual actions or clear the entire queue
+- Actions execute sequentially with automatic stuck detection
 
 ## Requirements
 
@@ -18,54 +31,42 @@ A modern boilerplate for creating OpenRCT2 plugins with ES6+ JavaScript, automat
 
 ## Installation
 
-1. Click "Use this template" to create a repo using this boilerplate
-2. Clone your new repository to your computer
-3. Run `npm install` to install dependencies (requires [Node.js](https://nodejs.org/))
-4. Update the plugin name in `package.json` (replace `openrct2-plugin-boilerplate`)
-
-## Configuration
-
-### Local Development Setup
-
-1. Copy `deploy.config.example.json` to `deploy.config.json`
-2. Update the `pluginPath` to your OpenRCT2 plugin directory:
+1. Clone the repository
+2. Run `npm install`
+3. Copy `deploy.config.example.json` to `deploy.config.json`
+4. Update `pluginPath` to your OpenRCT2 plugin directory:
    - Windows: `C:/Users/<YourUsername>/Documents/OpenRCT2/plugin/`
    - macOS: `~/Library/Application Support/OpenRCT2/plugin/`
    - Linux: `~/.config/OpenRCT2/plugin/`
-
-### TypeScript Definitions
-
-Update the path in `src/index.js` to point to your OpenRCT2 installation's `openrct2.d.ts` file for IntelliSense support.
+5. Run `npm run build && npm run deploy`
 
 ## Build Commands
 
-- `npm run build` - Build the plugin once
-- `npm run watch` - Automatically rebuild when source files change
-- `npm run deploy` - Build and copy to your OpenRCT2 plugin directory
-
-With hot-reloading enabled in OpenRCT2 and watch mode running, changes are automatically reflected in-game without restarting.
+- `npm run build` — Build the plugin
+- `npm run watch` — Rebuild automatically on source changes
+- `npm run deploy` — Copy the built plugin to your OpenRCT2 plugin directory
 
 ## Development
 
-Create your plugin in the `src/` directory:
-- `src/index.js` is the entry point
-- Import other modules using ES6 `import` syntax
-- The plugin name and version are automatically read from `package.json`
+Source files are in `src/`:
+- `src/index.js` — Entry point, registers the plugin and menu item
+- `src/window.js` — UI window with three tabs (Control, Appearance, Queue)
+- `src/guest.js` — Guest state management (selection, AI, accessories)
+- `src/actions.js` — Action queue executor with stuck detection and tile highlighting
+
+The plugin name and version are read from `package.json` automatically.
 
 ## Releases
 
 Releases are automated via GitHub Actions:
 
-1. Update your code and commit changes
+1. Commit your changes
 2. Create and push a version tag:
    ```bash
    git tag v1.0.0
    git push origin v1.0.0
    ```
-3. GitHub Actions will automatically:
-   - Update `package.json` with the tag version
-   - Build the plugin
-   - Create a GitHub release with the built file
+3. GitHub Actions will build the plugin and create a GitHub release with the `.js` file attached.
 
 ## License
 
