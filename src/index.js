@@ -1,19 +1,23 @@
-// Expose the OpenRCT2 to Visual Studio Code's Intellisense
-/// <reference path="OPENRCT2PATH/bin/openrct2.d.ts" />
+/// <reference path="C:/Program Files/OpenRCT2/bin/openrct2.d.ts" />
 
-// Import a module from another file.
-import Message from "./module";
+import { openWindow } from "./window";
 import { version, name } from "../package.json";
 
 function main() {
-    console.log(Message); // Display the imported "Hallo World" message from module.js.
+    if (typeof ui !== "undefined") {
+        ui.registerMenuItem("PeepSim", function () {
+            openWindow();
+        });
+    }
+    console.log("[peepsim] loaded v" + version);
 }
 
 registerPlugin({
     name: name,
     version: version,
-    licence: "MIT", // Make sure to set the license prior to release
+    licence: "MIT",
     authors: [""],
     type: "local",
+    targetApiVersion: 77,
     main: main
 });

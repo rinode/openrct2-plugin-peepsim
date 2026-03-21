@@ -1,10 +1,10 @@
 {
-  "name": "openrct2-plugin-boilerplate",
-  "version": "0.0.3",
-  "description": "A boilerplate for creating OpenRCT2 plugins with modern JavaScript tooling",
+  "name": "openrct2-plugin-peepsim",
+  "version": "0.1.0",
+  "description": "A guest simulator plugin for OpenRCT2",
   "main": "index.js",
   "scripts": {
-    "build": "rollup -c && babel ./build/openrct2-plugin-boilerplate.js --out-file ./build/openrct2-plugin-boilerplate.js",
+    "build": "rollup -c && babel ./build/openrct2-plugin-peepsim.js --out-file ./build/openrct2-plugin-peepsim.js",
     "deploy": "node deploy.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "watch": "npm-watch"
