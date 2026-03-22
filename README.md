@@ -8,7 +8,7 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct c
 - Select any guest from a dropdown or spawn a new one
 - Live viewport that follows the selected guest
 - **Move To**: click a tile on the map to walk the guest there, with tile highlighting
-- **Disable AI** — freeze the guest when idle, preventing autonomous behaviour
+- **Disable AI**: freeze the guest when idle, preventing autonomous behaviour
 
 ### Appearance Tab
 - Change shirt and pants colours
@@ -40,9 +40,9 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct c
 
 ## Build Commands
 
-- `npm run build` — Build the plugin
-- `npm run watch` — Rebuild automatically on source changes
-- `npm run deploy` — Copy the built plugin to your OpenRCT2 plugin directory
+- `npm run build`: Build the plugin
+- `npm run watch`: Rebuild automatically on source changes
+- `npm run deploy`: Copy the built plugin to your OpenRCT2 plugin directory
 
 ## Development
 
