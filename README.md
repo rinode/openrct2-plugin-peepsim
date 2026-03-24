@@ -1,16 +1,14 @@
 # PeepSim - OpenRCT2 Plugin
 
-A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct control — move them around the map, customise their appearance, and queue up actions.
+A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct control, move them around the map, customise their appearance, and queue up actions.
 
 ## Features
 
 ### Control Tab
 - Select any guest from a dropdown or spawn a new one
 - Live viewport that follows the selected guest
-- Guest stats display (happiness, hunger, thirst, cash)
-- **Move To** — click a tile on the map to walk the guest there, with tile highlighting
-- **Follow** — re-center the viewport on the guest
-- **Disable AI** — freeze the guest when idle, preventing autonomous behaviour
+- **Move To**: click a tile on the map to walk the guest there, with tile highlighting
+- **Disable AI**: freeze the guest when idle, preventing autonomous behaviour
 
 ### Appearance Tab
 - Change shirt and pants colours
@@ -42,17 +40,17 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct c
 
 ## Build Commands
 
-- `npm run build` — Build the plugin
-- `npm run watch` — Rebuild automatically on source changes
-- `npm run deploy` — Copy the built plugin to your OpenRCT2 plugin directory
+- `npm run build`: Build the plugin
+- `npm run watch`: Rebuild automatically on source changes
+- `npm run deploy`: Copy the built plugin to your OpenRCT2 plugin directory
 
 ## Development
 
 Source files are in `src/`:
-- `src/index.js` — Entry point, registers the plugin and menu item
-- `src/window.js` — UI window with three tabs (Control, Appearance, Queue)
-- `src/guest.js` — Guest state management (selection, AI, accessories)
-- `src/actions.js` — Action queue executor with stuck detection and tile highlighting
+- `src/index.js`: Entry point
+- `src/window.js`: PeepSim window
+- `src/guest.js`: Guest state management
+- `src/actions.js`: Action queue executor
 
 The plugin name and version are read from `package.json` automatically.
 
