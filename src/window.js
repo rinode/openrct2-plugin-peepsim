@@ -4,8 +4,6 @@ import {
     selectGuest,
     spawnGuest,
     getGuestList,
-    setAiDisabled,
-    isAiDisabled,
     freezeGuest,
     unfreezeGuest,
     setAccessory,
@@ -22,7 +20,12 @@ import {
     hasWork,
     startExecutor,
     stopExecutor,
-    clearHighlight
+    clearHighlight,
+    setControlMode,
+    getControlMode,
+    directMove,
+    directMoveDirection,
+    directWalk
 } from "./actions";
 
 var WINDOW_CLASS = "peepsim-main";
@@ -61,6 +64,11 @@ function openWindow() {
             enforceAccessories();
         },
         onClose: function () {
+            stopDirectionTool();
+            if (actionPlayInterval !== null) {
+                context.clearInterval(actionPlayInterval);
+                actionPlayInterval = null;
+            }
             if (ui.tool) {
                 ui.tool.cancel();
             }
@@ -72,7 +80,79 @@ function openWindow() {
     });
 }
 
-// ==================== CONTROL TAB ====================
+// Sprite IDs for directional arrows (from maze construction)
+var SPR_DIR_NE = 5635;
+var SPR_DIR_SE = 5636;
+var SPR_DIR_SW = 5637;
+var SPR_DIR_NW = 5638;
+
+// Direction tool state
+var heldDirection = -1;
+var directionInterval = null;
+
+function startDirectionTool(direction) {
+    if (!getSelectedGuest()) {
+        ui.showError("PeepSim", "No guest selected!");
+        return;
+    }
+
+    // If already holding this direction, toggle off
+    if (heldDirection === direction) {
+        stopDirectionTool();
+        freezeGuest();
+        return;
+    }
+
+    // Stop any previous direction hold
+    if (directionInterval !== null) {
+        context.clearInterval(directionInterval);
+        directionInterval = null;
+    }
+
+    heldDirection = direction;
+
+    // Start walking immediately
+    directWalk(direction);
+
+    // Keep re-pointing destination ahead every 400ms
+    directionInterval = context.setInterval(function () {
+        if (heldDirection < 0) return;
+        directWalk(heldDirection);
+    }, 400);
+
+    // Update button visuals
+    updateArrowPressed();
+}
+
+function stopDirectionTool() {
+    var wasActive = heldDirection >= 0;
+    heldDirection = -1;
+    if (directionInterval !== null) {
+        context.clearInterval(directionInterval);
+        directionInterval = null;
+    }
+    updateArrowPressed();
+    return wasActive;
+}
+
+function updateArrowPressed() {
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win) return;
+    var dirs = [
+        { name: "btnDirNE", dir: 0 },
+        { name: "btnDirSE", dir: 1 },
+        { name: "btnDirSW", dir: 2 },
+        { name: "btnDirNW", dir: 3 }
+    ];
+    for (var i = 0; i < dirs.length; i++) {
+        try {
+            var btn = win.findWidget(dirs[i].name);
+            btn.isPressed = (heldDirection === dirs[i].dir);
+        } catch (e) { }
+    }
+}
+
+// ==================== CONTROL TAB ==
 
 function createControlTab() {
     return {
@@ -98,12 +178,13 @@ function createControlTab() {
                 items: ["(none)"],
                 selectedIndex: 0,
                 onChange: function (index) {
-                    // Reset old guest state before switching
                     resetState();
                     clearActions();
                     var list = getGuestList();
                     if (index > 0 && index <= list.length) {
                         selectGuest(list[index - 1].id);
+                        freezeGuest();
+                        refreshActionDropdown();
                     }
                 }
             },
@@ -133,26 +214,34 @@ function createControlTab() {
                 tooltip: "Spawn a new guest",
                 onClick: function () {
                     spawnGuest();
+                    freezeGuest();
                     refreshGuestDropdown();
+                    refreshActionDropdown();
                 }
             },
-            // AI toggle
+            // Mode selector
             {
-                type: "checkbox",
+                type: "label",
                 x: MARGIN,
-                y: 68,
-                width: 200,
+                y: 70,
+                width: 50,
                 height: 14,
-                name: "chkAi",
-                text: "Disable AI (freeze when idle)",
-                isChecked: false,
-                onChange: function (checked) {
-                    setAiDisabled(checked);
-                    if (checked && !hasWork()) {
-                        freezeGuest();
-                    } else if (!checked) {
-                        unfreezeGuest();
-                    }
+                name: "lblMode",
+                text: "Mode:"
+            },
+            {
+                type: "dropdown",
+                x: 60,
+                y: 68,
+                width: 120,
+                height: 14,
+                name: "ddMode",
+                items: ["Direct Control", "Queued Control"],
+                selectedIndex: 0,
+                onChange: function (index) {
+                    var mode = index === 0 ? "direct" : "queued";
+                    setControlMode(mode);
+                    updateDirectWidgets();
                 }
             },
             // Viewport
@@ -161,25 +250,25 @@ function createControlTab() {
                 x: MARGIN,
                 y: 88,
                 width: WINDOW_WIDTH - MARGIN * 2,
-                height: 180,
+                height: 150,
                 name: "vpGuest"
             },
             // Guest info
             {
                 type: "label",
                 x: MARGIN,
-                y: 275,
+                y: 244,
                 width: WINDOW_WIDTH - MARGIN * 2,
                 height: 14,
                 name: "lblInfo",
                 text: "No guest selected"
             },
-            // Move To button
+            // Move To button (both modes)
             {
                 type: "button",
                 x: MARGIN,
-                y: 295,
-                width: 140,
+                y: 262,
+                width: WINDOW_WIDTH - MARGIN * 2,
                 height: 24,
                 name: "btnMoveTo",
                 text: "Move To",
@@ -188,31 +277,257 @@ function createControlTab() {
                     activateMoveTool();
                 }
             },
-            // Follow button
+            // --- Directional arrows (direct mode only) ---
+            // NW arrow (top-left)
+            {
+                type: "button",
+                x: 105,
+                y: 292,
+                width: 45,
+                height: 29,
+                name: "btnDirNW",
+                image: SPR_DIR_NW,
+                onClick: function () {
+                    startDirectionTool(3);
+                }
+            },
+            // NE arrow (top-right)
             {
                 type: "button",
                 x: 150,
-                y: 295,
-                width: 142,
-                height: 24,
-                name: "btnFollow",
-                text: "Follow",
-                tooltip: "Center viewport on guest",
+                y: 292,
+                width: 45,
+                height: 29,
+                name: "btnDirNE",
+                image: SPR_DIR_NE,
+                onClick: function () {
+                    startDirectionTool(0);
+                }
+            },
+            // SW arrow (bottom-left)
+            {
+                type: "button",
+                x: 105,
+                y: 321,
+                width: 45,
+                height: 29,
+                name: "btnDirSW",
+                image: SPR_DIR_SW,
+                onClick: function () {
+                    startDirectionTool(2);
+                }
+            },
+            // SE arrow (bottom-right)
+            {
+                type: "button",
+                x: 150,
+                y: 321,
+                width: 45,
+                height: 29,
+                name: "btnDirSE",
+                image: SPR_DIR_SE,
+                onClick: function () {
+                    startDirectionTool(1);
+                }
+            },
+            // Idle button (beneath arrows)
+            {
+                type: "button",
+                x: 105,
+                y: 354,
+                width: 90,
+                height: 20,
+                name: "btnIdle",
+                text: "Idle",
+                tooltip: "Toggle guest idle",
                 onClick: function () {
                     var guest = getSelectedGuest();
-                    if (guest) {
-                        var win = ui.getWindow(WINDOW_CLASS);
-                        if (win) {
-                            var vp = win.findWidget("vpGuest");
-                            if (vp && vp.viewport) {
-                                vp.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
-                            }
-                        }
+                    if (!guest) return;
+                    var wasWalking = stopDirectionTool();
+                    if (wasWalking) {
+                        freezeGuest();
+                    } else if (guest.getFlag("positionFrozen")) {
+                        unfreezeGuest();
+                    } else {
+                        freezeGuest();
                     }
+                }
+            },
+            // Action dropdown + perform button
+            {
+                type: "dropdown",
+                x: MARGIN,
+                y: 380,
+                width: 220,
+                height: 14,
+                name: "ddAction",
+                items: ["(select action)"],
+                selectedIndex: 0
+            },
+            {
+                type: "button",
+                x: 230,
+                y: 379,
+                width: 60,
+                height: 16,
+                name: "btnPerform",
+                text: "Perform",
+                tooltip: "Perform the selected action",
+                onClick: function () {
+                    performSelectedAction();
                 }
             }
         ]
     };
+}
+
+function updateDirectWidgets() {
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win) return;
+
+    var isDirect = getControlMode() === "direct";
+    var arrowNames = ["btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE"];
+    for (var i = 0; i < arrowNames.length; i++) {
+        try {
+            var btn = win.findWidget(arrowNames[i]);
+            btn.isVisible = isDirect;
+        } catch (e) { }
+    }
+
+    // Idle button visibility and state
+    try {
+        var btnIdle = win.findWidget("btnIdle");
+        btnIdle.isVisible = isDirect;
+        var guest = getSelectedGuest();
+        if (guest) {
+            btnIdle.isPressed = guest.getFlag("positionFrozen");
+        }
+    } catch (e) { }
+
+    // Action dropdown + perform button visibility and enabled state
+    try {
+        var ddAction = win.findWidget("ddAction");
+        var btnPerform = win.findWidget("btnPerform");
+        ddAction.isVisible = isDirect;
+        btnPerform.isVisible = isDirect;
+        var guest = getSelectedGuest();
+        var isIdle = guest && guest.getFlag("positionFrozen");
+        ddAction.isDisabled = !isIdle;
+        btnPerform.isDisabled = !isIdle;
+    } catch (e) { }
+}
+
+// Nice display names for animations
+var ACTION_LABELS = {
+    jump: "Jump",
+    takePhoto: "Take Photo",
+    wave: "Wave",
+    wave2: "Wave (alt)",
+    clap: "Clap",
+    joy: "Joy",
+    wow: "Wow",
+    checkTime: "Check Time",
+    readMap: "Read Map",
+    drawPicture: "Draw Picture",
+    disgust: "Disgust",
+    throwUp: "Throw Up",
+    shakeHead: "Shake Head",
+    beingWatched: "Being Watched",
+    withdrawMoney: "Withdraw Money",
+    emptyPockets: "Empty Pockets",
+    eatFood: "Eat Food"
+};
+
+// Animations to exclude from the dropdown (boring/internal)
+var ACTION_EXCLUDE = [
+    "walking", "watchRide", "holdMat",
+    "sittingIdle", "sittingEatFood",
+    "sittingLookAroundLeft", "sittingLookAroundRight",
+    "hanging", "drowning"
+];
+
+var actionAnimations = []; // mapped list for current guest
+
+function refreshActionDropdown() {
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win) return;
+
+    var dd = win.findWidget("ddAction");
+    var guest = getSelectedGuest();
+    actionAnimations = [];
+
+    if (!guest) {
+        dd.items = ["(no guest)"];
+        dd.selectedIndex = 0;
+        return;
+    }
+
+    var available = guest.availableAnimations || [];
+    var items = [];
+    for (var i = 0; i < available.length; i++) {
+        var anim = available[i];
+        if (ACTION_EXCLUDE.indexOf(anim) >= 0) continue;
+        var label = ACTION_LABELS[anim] || anim;
+        items.push(label);
+        actionAnimations.push(anim);
+    }
+
+    if (items.length === 0) {
+        dd.items = ["(none available)"];
+    } else {
+        dd.items = items;
+    }
+    dd.selectedIndex = 0;
+}
+
+var actionPlayInterval = null;
+
+function performSelectedAction() {
+    var guest = getSelectedGuest();
+    if (!guest) return;
+    if (actionAnimations.length === 0) return;
+    if (!guest.getFlag("positionFrozen")) return;
+
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win) return;
+
+    var dd = win.findWidget("ddAction");
+    var idx = dd.selectedIndex;
+    if (idx < 0 || idx >= actionAnimations.length) return;
+
+    var anim = actionAnimations[idx];
+
+    // Stop any previous animation playback
+    if (actionPlayInterval !== null) {
+        context.clearInterval(actionPlayInterval);
+        actionPlayInterval = null;
+    }
+
+    guest.animation = anim;
+    guest.animationOffset = 0;
+
+    var prevOffset = -1;
+    actionPlayInterval = context.setInterval(function () {
+        var g = getSelectedGuest();
+        if (!g || g.animation !== anim) {
+            // Animation was changed externally, stop tracking
+            if (actionPlayInterval !== null) {
+                context.clearInterval(actionPlayInterval);
+                actionPlayInterval = null;
+            }
+            return;
+        }
+        var offset = g.animationOffset;
+        // Detect wrap-around: offset went backwards means animation completed
+        if (prevOffset >= 0 && offset < prevOffset) {
+            g.animation = "watchRide";
+            g.animationOffset = 0;
+            context.clearInterval(actionPlayInterval);
+            actionPlayInterval = null;
+            return;
+        }
+        prevOffset = offset;
+    }, 50);
 }
 
 function refreshGuestDropdown() {
@@ -237,11 +552,15 @@ function updateControlTab() {
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win || win.tabIndex !== 0) return;
 
-    // Sync checkbox state from global state
-    var chkAi = win.findWidget("chkAi");
-    if (chkAi.isChecked !== isAiDisabled()) {
-        chkAi.isChecked = isAiDisabled();
+    // Sync mode dropdown
+    var ddMode = win.findWidget("ddMode");
+    var modeIndex = getControlMode() === "direct" ? 0 : 1;
+    if (ddMode.selectedIndex !== modeIndex) {
+        ddMode.selectedIndex = modeIndex;
     }
+
+    // Sync arrow visibility
+    updateDirectWidgets();
 
     var guest = getSelectedGuest();
     var lblInfo = win.findWidget("lblInfo");
@@ -267,6 +586,8 @@ function activateMoveTool() {
         ui.showError("PeepSim", "No guest selected!");
         return;
     }
+    // Stop any active direction hold
+    stopDirectionTool();
     ui.activateTool({
         id: "peepsim-move",
         cursor: "walk_down",
@@ -280,8 +601,12 @@ function activateMoveTool() {
             if (e.mapCoords) {
                 var tileX = Math.floor(e.mapCoords.x / 32);
                 var tileY = Math.floor(e.mapCoords.y / 32);
-                addAction({ type: "move", target: { x: tileX, y: tileY } });
-                refreshQueueList();
+                if (getControlMode() === "direct") {
+                    directMove(tileX, tileY);
+                } else {
+                    addAction({ type: "move", target: { x: tileX, y: tileY } });
+                    refreshQueueList();
+                }
             }
         },
         onFinish: function () {
@@ -504,7 +829,6 @@ function createQueueTab() {
                 showColumnHeaders: true,
                 columns: [
                     { header: "#", width: 30 },
-                    { header: "Action", width: 80 },
                     { header: "Target", width: 120 }
                 ],
                 items: [],
@@ -576,7 +900,6 @@ function refreshQueueList() {
         var a = actions[i];
         items.push([
             String(i + 1),
-            a.type,
             a.target.x + ", " + a.target.y
         ]);
     }

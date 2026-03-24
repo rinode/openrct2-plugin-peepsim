@@ -1,5 +1,5 @@
 var selectedGuestId = null;
-var aiDisabled = false;
+var aiDisabled = true;
 
 var accessories = {
     hat: { enabled: false, colour: 6 },
@@ -38,17 +38,19 @@ function getGuestList() {
 }
 
 function setAiDisabled(disabled) {
-    aiDisabled = disabled;
+    // AI is always disabled in PeepSim
 }
 
 function isAiDisabled() {
-    return aiDisabled;
+    return true;
 }
 
 function freezeGuest() {
     var guest = getSelectedGuest();
     if (guest) {
         guest.setFlag("positionFrozen", true);
+        guest.animation = "watchRide";
+        guest.animationOffset = 0;
     }
 }
 
@@ -56,6 +58,8 @@ function unfreezeGuest() {
     var guest = getSelectedGuest();
     if (guest) {
         guest.setFlag("positionFrozen", false);
+        guest.animation = "walking";
+        guest.animationOffset = 0;
     }
 }
 
@@ -114,9 +118,11 @@ function resetState() {
     var guest = getSelectedGuest();
     if (guest) {
         guest.setFlag("positionFrozen", false);
+        guest.animation = "walking";
+        guest.animationOffset = 0;
     }
     selectedGuestId = null;
-    aiDisabled = false;
+    aiDisabled = true;
     accessories = {
         hat: { enabled: false, colour: 6 },
         balloon: { enabled: false, colour: 14 },
