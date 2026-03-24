@@ -6,6 +6,8 @@ var tickInterval = null;
 var moveTickCount = 0;
 var lastMoveDist = -1;
 var controlMode = "direct"; // "direct" or "queued"
+var queuePaused = false;
+var actionTickCount = 0;
 
 function setControlMode(mode) {
     controlMode = mode;
@@ -26,6 +28,7 @@ function removeAction(index) {
 function clearActions() {
     actionQueue = [];
     currentAction = null;
+    actionTickCount = 0;
 }
 
 function getActions() {
@@ -38,6 +41,37 @@ function getCurrentAction() {
 
 function hasWork() {
     return currentAction !== null || actionQueue.length > 0;
+}
+
+function pauseQueue() {
+    queuePaused = true;
+    // Freeze guest if currently executing
+    var guest = getSelectedGuest();
+    if (guest && currentAction) {
+        freezeGuest();
+    }
+}
+
+function resumeQueue() {
+    queuePaused = false;
+    // Unfreeze if there's work to do
+    if (hasWork()) {
+        var guest = getSelectedGuest();
+        if (guest && currentAction && currentAction.type === "move") {
+            unfreezeGuest();
+            guest.destination = {
+                x: currentAction.target.x * 32 + 16,
+                y: currentAction.target.y * 32 + 16
+            };
+        } else if (guest && currentAction && currentAction.type === "action") {
+            freezeGuest();
+            guest.animation = currentAction.animation;
+        }
+    }
+}
+
+function isQueuePaused() {
+    return queuePaused;
 }
 
 // Direct mode: immediately move to target, cancel any previous action
@@ -145,6 +179,7 @@ function finishCurrentAction() {
     currentAction = null;
     moveTickCount = 0;
     lastMoveDist = -1;
+    actionTickCount = 0;
     clearHighlight();
 
     // If nothing left to do and AI is disabled, freeze
@@ -157,8 +192,23 @@ function executeTick() {
     var guest = getSelectedGuest();
     if (!guest) return;
 
+    // Don't process if paused
+    if (queuePaused) return;
+
     // --- Waiting for current action to complete ---
     if (currentAction !== null) {
+        if (currentAction.type === "action") {
+            // Animation action: count ticks for duration
+            actionTickCount++;
+            // 10 ticks per second (100ms interval)
+            var durationTicks = (currentAction.duration || 3) * 10;
+            if (actionTickCount >= durationTicks) {
+                finishCurrentAction();
+            }
+            return;
+        }
+
+        // Move action
         var targetX = currentAction.target.x * 32 + 16;
         var targetY = currentAction.target.y * 32 + 16;
         var dx = guest.x - targetX;
@@ -191,14 +241,22 @@ function executeTick() {
     currentAction = actionQueue.shift();
     moveTickCount = 0;
     lastMoveDist = -1;
+    actionTickCount = 0;
 
-    // Unfreeze so the guest can walk
-    unfreezeGuest();
-    guest.destination = {
-        x: currentAction.target.x * 32 + 16,
-        y: currentAction.target.y * 32 + 16
-    };
-    highlightTarget(currentAction.target);
+    if (currentAction.type === "action") {
+        // Animation action: freeze in place and set animation
+        freezeGuest();
+        guest.animation = currentAction.animation;
+        guest.animationOffset = 0;
+    } else {
+        // Move action: unfreeze so the guest can walk
+        unfreezeGuest();
+        guest.destination = {
+            x: currentAction.target.x * 32 + 16,
+            y: currentAction.target.y * 32 + 16
+        };
+        highlightTarget(currentAction.target);
+    }
 }
 
 export {
@@ -215,5 +273,8 @@ export {
     getControlMode,
     directMove,
     directMoveDirection,
-    directWalk
+    directWalk,
+    pauseQueue,
+    resumeQueue,
+    isQueuePaused
 };

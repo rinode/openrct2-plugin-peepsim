@@ -6,9 +6,10 @@ import {
     getGuestList,
     freezeGuest,
     unfreezeGuest,
-    setAccessory,
+    setAccessoryGroup,
     setAccessoryColour,
-    getAccessories,
+    getAccessoryState,
+    syncAccessoriesFromGuest,
     enforceAccessories,
     resetState
 } from "./guest";
@@ -25,13 +26,19 @@ import {
     getControlMode,
     directMove,
     directMoveDirection,
-    directWalk
+    directWalk,
+    pauseQueue,
+    resumeQueue,
+    isQueuePaused
 } from "./actions";
 
 var WINDOW_CLASS = "peepsim-main";
 var WINDOW_WIDTH = 300;
-var WINDOW_HEIGHT = 400;
+var WINDOW_HEIGHT = 460;
 var MARGIN = 5;
+var VP_WIDTH = WINDOW_WIDTH - MARGIN * 2; // 290
+var VP_HEIGHT = Math.round(VP_WIDTH * 9 / 16); // 163 (16:9)
+var VP_BOTTOM = 50 + VP_HEIGHT; // 213
 
 function openWindow() {
     var existing = ui.getWindow(WINDOW_CLASS);
@@ -57,6 +64,12 @@ function openWindow() {
             createQueueTab()
         ],
         tabIndex: 0,
+        onTabChange: function () {
+            // Refresh widgets when switching tabs
+            updateControlTab();
+            updateAppearanceTab();
+            updateQueueTab();
+        },
         onUpdate: function () {
             updateControlTab();
             updateAppearanceTab();
@@ -137,7 +150,7 @@ function stopDirectionTool() {
 
 function updateArrowPressed() {
     var win = ui.getWindow(WINDOW_CLASS);
-    if (!win) return;
+    if (!win || win.tabIndex !== 0) return;
     var dirs = [
         { name: "btnDirNE", dir: 0 },
         { name: "btnDirSE", dir: 1 },
@@ -154,25 +167,48 @@ function updateArrowPressed() {
 
 // ==================== CONTROL TAB ==
 
+// Pause sprites (unpressed / pressed, like the toolbar)
+var SPR_PAUSE = 5597;
+var SPR_PAUSE_PRESSED = 5598;
+
 function createControlTab() {
+    var Y_GUEST = VP_BOTTOM + 4;      // 217
+    var Y_MODE  = Y_GUEST + 18;       // 235
+    var Y_MOVE  = Y_MODE + 20;        // 255
+    var Y_ARROWS = Y_MOVE + 24;       // 279
+    var Y_ARROWS2 = Y_ARROWS + 29;    // 308
+    var Y_IDLE  = Y_ARROWS2 + 29;     // 337
+    var Y_ACTION = Y_IDLE + 28;       // 365
+    var Y_QADD  = Y_ACTION + 20;      // 385
+    var Y_QPLAY = Y_QADD + 20;       // 405
+
     return {
         image: "guests",
         widgets: [
+            // Viewport (same position/size as appearance tab — 16:9)
+            {
+                type: "viewport",
+                x: MARGIN,
+                y: 50,
+                width: VP_WIDTH,
+                height: VP_HEIGHT,
+                name: "vpGuest"
+            },
             // Guest selection dropdown
             {
                 type: "label",
                 x: MARGIN,
-                y: 50,
-                width: 60,
+                y: Y_GUEST,
+                width: 50,
                 height: 14,
                 name: "lblGuest",
                 text: "Guest:"
             },
             {
                 type: "dropdown",
-                x: 60,
-                y: 48,
-                width: 170,
+                x: 50,
+                y: Y_GUEST - 2,
+                width: 180,
                 height: 14,
                 name: "ddGuest",
                 items: ["(none)"],
@@ -184,7 +220,9 @@ function createControlTab() {
                     if (index > 0 && index <= list.length) {
                         selectGuest(list[index - 1].id);
                         freezeGuest();
+                        syncAccessoriesFromGuest();
                         refreshActionDropdown();
+                        refreshQueueActionDropdown();
                     }
                 }
             },
@@ -192,7 +230,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 235,
-                y: 48,
+                y: Y_GUEST - 2,
                 width: 24,
                 height: 14,
                 name: "btnRefresh",
@@ -206,7 +244,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 262,
-                y: 48,
+                y: Y_GUEST - 2,
                 width: 30,
                 height: 14,
                 name: "btnSpawn",
@@ -215,15 +253,17 @@ function createControlTab() {
                 onClick: function () {
                     spawnGuest();
                     freezeGuest();
+                    syncAccessoriesFromGuest();
                     refreshGuestDropdown();
                     refreshActionDropdown();
+                    refreshQueueActionDropdown();
                 }
             },
             // Mode selector
             {
                 type: "label",
                 x: MARGIN,
-                y: 70,
+                y: Y_MODE,
                 width: 50,
                 height: 14,
                 name: "lblMode",
@@ -231,8 +271,8 @@ function createControlTab() {
             },
             {
                 type: "dropdown",
-                x: 60,
-                y: 68,
+                x: 50,
+                y: Y_MODE - 2,
                 width: 120,
                 height: 14,
                 name: "ddMode",
@@ -244,32 +284,13 @@ function createControlTab() {
                     updateDirectWidgets();
                 }
             },
-            // Viewport
-            {
-                type: "viewport",
-                x: MARGIN,
-                y: 88,
-                width: WINDOW_WIDTH - MARGIN * 2,
-                height: 150,
-                name: "vpGuest"
-            },
-            // Guest info
-            {
-                type: "label",
-                x: MARGIN,
-                y: 244,
-                width: WINDOW_WIDTH - MARGIN * 2,
-                height: 14,
-                name: "lblInfo",
-                text: "No guest selected"
-            },
             // Move To button (both modes)
             {
                 type: "button",
                 x: MARGIN,
-                y: 262,
+                y: Y_MOVE,
                 width: WINDOW_WIDTH - MARGIN * 2,
-                height: 24,
+                height: 20,
                 name: "btnMoveTo",
                 text: "Move To",
                 tooltip: "Click a tile to walk the guest there",
@@ -282,7 +303,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 105,
-                y: 292,
+                y: Y_ARROWS,
                 width: 45,
                 height: 29,
                 name: "btnDirNW",
@@ -295,7 +316,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 150,
-                y: 292,
+                y: Y_ARROWS,
                 width: 45,
                 height: 29,
                 name: "btnDirNE",
@@ -308,7 +329,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 105,
-                y: 321,
+                y: Y_ARROWS2,
                 width: 45,
                 height: 29,
                 name: "btnDirSW",
@@ -321,7 +342,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 150,
-                y: 321,
+                y: Y_ARROWS2,
                 width: 45,
                 height: 29,
                 name: "btnDirSE",
@@ -330,15 +351,15 @@ function createControlTab() {
                     startDirectionTool(1);
                 }
             },
-            // Idle button (beneath arrows)
+            // Idle button (square, pause sprite — direct mode only)
             {
                 type: "button",
-                x: 105,
-                y: 354,
-                width: 90,
-                height: 20,
+                x: 138,
+                y: Y_IDLE,
+                width: 24,
+                height: 24,
                 name: "btnIdle",
-                text: "Idle",
+                image: SPR_PAUSE,
                 tooltip: "Toggle guest idle",
                 onClick: function () {
                     var guest = getSelectedGuest();
@@ -353,11 +374,11 @@ function createControlTab() {
                     }
                 }
             },
-            // Action dropdown + perform button
+            // Action dropdown + perform button (both modes)
             {
                 type: "dropdown",
                 x: MARGIN,
-                y: 380,
+                y: Y_ACTION,
                 width: 220,
                 height: 14,
                 name: "ddAction",
@@ -367,7 +388,7 @@ function createControlTab() {
             {
                 type: "button",
                 x: 230,
-                y: 379,
+                y: Y_ACTION - 1,
                 width: 60,
                 height: 16,
                 name: "btnPerform",
@@ -375,6 +396,90 @@ function createControlTab() {
                 tooltip: "Perform the selected action",
                 onClick: function () {
                     performSelectedAction();
+                }
+            },
+            // --- Queued mode widgets ---
+            // Queue action dropdown + duration + add
+            {
+                type: "dropdown",
+                x: MARGIN,
+                y: Y_QADD,
+                width: 130,
+                height: 14,
+                name: "ddCtrlQueueAction",
+                items: [],
+                selectedIndex: 0
+            },
+            {
+                type: "label",
+                x: 140,
+                y: Y_QADD,
+                width: 20,
+                height: 14,
+                name: "lblCtrlDuration",
+                text: "for"
+            },
+            {
+                type: "spinner",
+                x: 160,
+                y: Y_QADD - 2,
+                width: 55,
+                height: 16,
+                name: "spnCtrlDuration",
+                text: "3s",
+                onDecrement: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var spn = win.findWidget("spnCtrlDuration");
+                    var val = parseInt(spn.text) || 3;
+                    if (val > 1) val--;
+                    spn.text = val + "s";
+                },
+                onIncrement: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var spn = win.findWidget("spnCtrlDuration");
+                    var val = parseInt(spn.text) || 3;
+                    if (val < 60) val++;
+                    spn.text = val + "s";
+                }
+            },
+            {
+                type: "button",
+                x: 220,
+                y: Y_QADD - 2,
+                width: 50,
+                height: 18,
+                name: "btnCtrlAddAction",
+                text: "+ Add",
+                onClick: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var dd = win.findWidget("ddCtrlQueueAction");
+                    var spn = win.findWidget("spnCtrlDuration");
+                    if (!queueActionAnimations.length) return;
+                    var anim = queueActionAnimations[dd.selectedIndex];
+                    var dur = parseInt(spn.text) || 3;
+                    addAction({ type: "action", animation: anim, duration: dur });
+                    refreshQueueList();
+                }
+            },
+            // Queue play/pause toggle (queued mode only)
+            {
+                type: "button",
+                x: 272,
+                y: Y_QADD - 2,
+                width: 18,
+                height: 18,
+                name: "btnCtrlPlayPause",
+                image: SPR_PAUSE,
+                tooltip: "Play/Pause queue",
+                onClick: function () {
+                    if (isQueuePaused()) {
+                        resumeQueue();
+                    } else {
+                        pauseQueue();
+                    }
                 }
             }
         ]
@@ -386,6 +491,10 @@ function updateDirectWidgets() {
     if (!win) return;
 
     var isDirect = getControlMode() === "direct";
+    var guest = getSelectedGuest();
+    var hasGuest = !!guest;
+
+    // Arrow buttons — direct mode only
     var arrowNames = ["btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE"];
     for (var i = 0; i < arrowNames.length; i++) {
         try {
@@ -394,27 +503,46 @@ function updateDirectWidgets() {
         } catch (e) { }
     }
 
-    // Idle button visibility and state
+    // Idle button — direct mode only
     try {
         var btnIdle = win.findWidget("btnIdle");
         btnIdle.isVisible = isDirect;
-        var guest = getSelectedGuest();
         if (guest) {
-            btnIdle.isPressed = guest.getFlag("positionFrozen");
+            var frozen = guest.getFlag("positionFrozen");
+            btnIdle.image = frozen ? SPR_PAUSE_PRESSED : SPR_PAUSE;
         }
     } catch (e) { }
 
-    // Action dropdown + perform button visibility and enabled state
+    // Action dropdown + perform — always visible (both modes)
     try {
         var ddAction = win.findWidget("ddAction");
         var btnPerform = win.findWidget("btnPerform");
-        ddAction.isVisible = isDirect;
-        btnPerform.isVisible = isDirect;
-        var guest = getSelectedGuest();
         var isIdle = guest && guest.getFlag("positionFrozen");
-        ddAction.isDisabled = !isIdle;
-        btnPerform.isDisabled = !isIdle;
+        ddAction.isDisabled = !hasGuest || !isIdle;
+        btnPerform.isDisabled = !hasGuest || !isIdle;
     } catch (e) { }
+
+    // Queued mode widgets — only visible in queued mode
+    var queuedWidgets = ["ddCtrlQueueAction", "lblCtrlDuration", "spnCtrlDuration", "btnCtrlAddAction", "btnCtrlPlayPause"];
+    for (var j = 0; j < queuedWidgets.length; j++) {
+        try {
+            var w = win.findWidget(queuedWidgets[j]);
+            w.isVisible = !isDirect;
+            w.isDisabled = !hasGuest;
+        } catch (e) { }
+    }
+
+    // Sync queue play/pause button state
+    try {
+        var btnPP = win.findWidget("btnCtrlPlayPause");
+        var playing = hasGuest && !isQueuePaused();
+        btnPP.image = playing ? SPR_PAUSE_PRESSED : SPR_PAUSE;
+    } catch (e) { }
+
+    // Sync queued mode action dropdown
+    if (!isDirect) {
+        refreshCtrlQueueActionDropdown();
+    }
 }
 
 // Nice display names for animations
@@ -478,6 +606,20 @@ function refreshActionDropdown() {
         dd.items = items;
     }
     dd.selectedIndex = 0;
+}
+
+function refreshCtrlQueueActionDropdown() {
+    populateQueueAnimations();
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win) return;
+    var dd;
+    try { dd = win.findWidget("ddCtrlQueueAction"); } catch (e) { return; }
+    var labels = [];
+    for (var j = 0; j < queueActionAnimations.length; j++) {
+        labels.push(ACTION_LABELS[queueActionAnimations[j]] || queueActionAnimations[j]);
+    }
+    dd.items = labels.length > 0 ? labels : ["(none)"];
+    if (labels.length > 0) dd.selectedIndex = 0;
 }
 
 var actionPlayInterval = null;
@@ -552,32 +694,36 @@ function updateControlTab() {
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win || win.tabIndex !== 0) return;
 
+    var guest = getSelectedGuest();
+    var hasGuest = !!guest;
+
     // Sync mode dropdown
     var ddMode = win.findWidget("ddMode");
     var modeIndex = getControlMode() === "direct" ? 0 : 1;
     if (ddMode.selectedIndex !== modeIndex) {
         ddMode.selectedIndex = modeIndex;
     }
+    ddMode.isDisabled = !hasGuest;
 
-    // Sync arrow visibility
+    // Disable/enable interactive widgets based on guest selection
+    var disableNames = ["btnMoveTo", "btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE", "btnIdle", "ddAction", "btnPerform"];
+    for (var i = 0; i < disableNames.length; i++) {
+        try {
+            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
+        } catch (e) { }
+    }
+
+    // Sync arrow visibility & mode widgets
     updateDirectWidgets();
 
-    var guest = getSelectedGuest();
-    var lblInfo = win.findWidget("lblInfo");
+    // Update arrow pressed state (remembers direction across tab switches)
+    updateArrowPressed();
 
     if (guest) {
-        lblInfo.text = guest.name
-            + " | HP:" + guest.happiness
-            + " HG:" + guest.hunger
-            + " TH:" + guest.thirst
-            + " $" + (guest.cash / 10).toFixed(1);
-
         var vp = win.findWidget("vpGuest");
         if (vp && vp.viewport) {
             vp.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
         }
-    } else {
-        lblInfo.text = "No guest selected";
     }
 }
 
@@ -617,15 +763,37 @@ function activateMoveTool() {
 
 // ==================== APPEARANCE TAB ====================
 
+// Display labels for accessory types
+var ACCESSORY_LABELS = {
+    hat: "Hat",
+    sunglasses: "Sunglasses",
+    balloon: "Balloon",
+    umbrella: "Umbrella"
+};
+
+// Which items in a group support colour
+var COLOUR_ITEMS = { hat: true, balloon: true, umbrella: true };
+
 function createAppearanceTab() {
+    var Y0 = VP_BOTTOM + 4; // first row below viewport
+
     return {
         image: "ride",
         widgets: [
+            // Guest preview viewport (same position/size as control tab — 16:9)
+            {
+                type: "viewport",
+                x: MARGIN,
+                y: 50,
+                width: VP_WIDTH,
+                height: VP_HEIGHT,
+                name: "vpPreview"
+            },
             // Shirt colour
             {
                 type: "label",
                 x: MARGIN,
-                y: 50,
+                y: Y0,
                 width: 80,
                 height: 14,
                 name: "lblShirt",
@@ -634,7 +802,7 @@ function createAppearanceTab() {
             {
                 type: "colourpicker",
                 x: 100,
-                y: 48,
+                y: Y0 - 2,
                 width: 12,
                 height: 12,
                 name: "cpShirt",
@@ -648,7 +816,7 @@ function createAppearanceTab() {
             {
                 type: "label",
                 x: MARGIN,
-                y: 70,
+                y: Y0 + 20,
                 width: 80,
                 height: 14,
                 name: "lblPants",
@@ -657,7 +825,7 @@ function createAppearanceTab() {
             {
                 type: "colourpicker",
                 x: 100,
-                y: 68,
+                y: Y0 + 18,
                 width: 12,
                 height: 12,
                 name: "cpPants",
@@ -671,102 +839,85 @@ function createAppearanceTab() {
             {
                 type: "groupbox",
                 x: MARGIN,
-                y: 90,
+                y: Y0 + 40,
                 width: WINDOW_WIDTH - MARGIN * 2,
-                height: 130,
+                height: 64,
                 name: "gbAccessories",
                 text: "Accessories"
             },
-            // Hat
+            // Head slot: None / Hat / Sunglasses
             {
-                type: "checkbox",
+                type: "label",
                 x: MARGIN + 5,
-                y: 108,
-                width: 80,
+                y: Y0 + 58,
+                width: 40,
                 height: 14,
-                name: "chkHat",
-                text: "Hat",
-                isChecked: false,
-                onChange: function (checked) {
-                    setAccessory("hat", checked);
+                name: "lblHead",
+                text: "Head:"
+            },
+            {
+                type: "dropdown",
+                x: 60,
+                y: Y0 + 56,
+                width: 110,
+                height: 14,
+                name: "ddHead",
+                items: ["None", "Hat", "Sunglasses"],
+                selectedIndex: 0,
+                onChange: function (index) {
+                    var items = [null, "hat", "sunglasses"];
+                    setAccessoryGroup("head", items[index]);
                 }
             },
             {
                 type: "colourpicker",
-                x: 100,
-                y: 106,
+                x: 180,
+                y: Y0 + 56,
                 width: 12,
                 height: 12,
-                name: "cpHat",
+                name: "cpHead",
                 colour: 6,
                 onChange: function (colour) {
                     setAccessoryColour("hat", colour);
                 }
             },
-            // Balloon
+            // Held slot: None / Balloon / Umbrella
             {
-                type: "checkbox",
+                type: "label",
                 x: MARGIN + 5,
-                y: 128,
-                width: 80,
+                y: Y0 + 78,
+                width: 40,
                 height: 14,
-                name: "chkBalloon",
-                text: "Balloon",
-                isChecked: false,
-                onChange: function (checked) {
-                    setAccessory("balloon", checked);
+                name: "lblHeld",
+                text: "Held:"
+            },
+            {
+                type: "dropdown",
+                x: 60,
+                y: Y0 + 76,
+                width: 110,
+                height: 14,
+                name: "ddHeld",
+                items: ["None", "Balloon", "Umbrella"],
+                selectedIndex: 0,
+                onChange: function (index) {
+                    var items = [null, "balloon", "umbrella"];
+                    setAccessoryGroup("held", items[index]);
                 }
             },
             {
                 type: "colourpicker",
-                x: 100,
-                y: 126,
+                x: 180,
+                y: Y0 + 76,
                 width: 12,
                 height: 12,
-                name: "cpBalloon",
+                name: "cpHeld",
                 colour: 14,
                 onChange: function (colour) {
-                    setAccessoryColour("balloon", colour);
-                }
-            },
-            // Umbrella
-            {
-                type: "checkbox",
-                x: MARGIN + 5,
-                y: 148,
-                width: 80,
-                height: 14,
-                name: "chkUmbrella",
-                text: "Umbrella",
-                isChecked: false,
-                onChange: function (checked) {
-                    setAccessory("umbrella", checked);
-                }
-            },
-            {
-                type: "colourpicker",
-                x: 100,
-                y: 146,
-                width: 12,
-                height: 12,
-                name: "cpUmbrella",
-                colour: 0,
-                onChange: function (colour) {
-                    setAccessoryColour("umbrella", colour);
-                }
-            },
-            // Sunglasses
-            {
-                type: "checkbox",
-                x: MARGIN + 5,
-                y: 168,
-                width: 80,
-                height: 14,
-                name: "chkSunglasses",
-                text: "Sunglasses",
-                isChecked: false,
-                onChange: function (checked) {
-                    setAccessory("sunglasses", checked);
+                    var state = getAccessoryState();
+                    if (state.held && COLOUR_ITEMS[state.held]) {
+                        setAccessoryColour(state.held, colour);
+                    }
                 }
             }
         ]
@@ -778,58 +929,130 @@ function updateAppearanceTab() {
     if (!win || win.tabIndex !== 1) return;
 
     var guest = getSelectedGuest();
+    var hasGuest = !!guest;
+
+    // Disable/enable all interactive widgets
+    var disableNames = ["cpShirt", "cpPants", "ddHead", "cpHead", "ddHeld", "cpHeld"];
+    for (var i = 0; i < disableNames.length; i++) {
+        try {
+            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
+        } catch (e) { }
+    }
+
     if (!guest) return;
 
-    var cpShirt = win.findWidget("cpShirt");
-    var cpPants = win.findWidget("cpPants");
-    var cpHat = win.findWidget("cpHat");
-    var cpBalloon = win.findWidget("cpBalloon");
-    var cpUmbrella = win.findWidget("cpUmbrella");
-    var chkHat = win.findWidget("chkHat");
-    var chkBalloon = win.findWidget("chkBalloon");
-    var chkUmbrella = win.findWidget("chkUmbrella");
-    var chkSunglasses = win.findWidget("chkSunglasses");
+    // Sync preview viewport
+    var vpPreview = win.findWidget("vpPreview");
+    if (vpPreview && vpPreview.viewport) {
+        vpPreview.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
+    }
 
-    cpShirt.colour = guest.tshirtColour;
-    cpPants.colour = guest.trousersColour;
-    cpHat.colour = guest.hatColour;
-    cpBalloon.colour = guest.balloonColour;
-    cpUmbrella.colour = guest.umbrellaColour;
+    // Sync clothing colours
+    win.findWidget("cpShirt").colour = guest.tshirtColour;
+    win.findWidget("cpPants").colour = guest.trousersColour;
 
-    chkHat.isChecked = guest.hasItem({ type: "hat" });
-    chkBalloon.isChecked = guest.hasItem({ type: "balloon" });
-    chkUmbrella.isChecked = guest.hasItem({ type: "umbrella" });
-    chkSunglasses.isChecked = guest.hasItem({ type: "sunglasses" });
+    // Sync accessory state from guest
+    var state = getAccessoryState();
+
+    // Head dropdown
+    var ddHead = win.findWidget("ddHead");
+    var headItems = [null, "hat", "sunglasses"];
+    var headIdx = headItems.indexOf(state.head);
+    if (headIdx < 0) headIdx = 0;
+    ddHead.selectedIndex = headIdx;
+
+    // Head colour picker — only enabled for hat
+    var cpHead = win.findWidget("cpHead");
+    cpHead.isDisabled = state.head !== "hat";
+    if (state.head === "hat") {
+        cpHead.colour = state.colours.hat;
+    }
+
+    // Held dropdown
+    var ddHeld = win.findWidget("ddHeld");
+    var heldItems = [null, "balloon", "umbrella"];
+    var heldIdx = heldItems.indexOf(state.held);
+    if (heldIdx < 0) heldIdx = 0;
+    ddHeld.selectedIndex = heldIdx;
+
+    // Held colour picker — enabled for balloon or umbrella
+    var cpHeld = win.findWidget("cpHeld");
+    cpHeld.isDisabled = !state.held || !COLOUR_ITEMS[state.held];
+    if (state.held === "balloon") {
+        cpHeld.colour = state.colours.balloon;
+    } else if (state.held === "umbrella") {
+        cpHeld.colour = state.colours.umbrella;
+    }
 }
 
 // ==================== QUEUE TAB ====================
+
+var queueActionAnimations = [];
+
+function populateQueueAnimations() {
+    var guest = getSelectedGuest();
+    queueActionAnimations = [];
+    if (guest) {
+        var avail = guest.availableAnimations || [];
+        for (var i = 0; i < avail.length; i++) {
+            if (ACTION_EXCLUDE.indexOf(avail[i]) === -1) {
+                queueActionAnimations.push(avail[i]);
+            }
+        }
+    }
+}
+
+function refreshQueueActionDropdown() {
+    populateQueueAnimations();
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win) return;
+    var dd = win.findWidget("ddQueueAction");
+    if (dd) {
+        var labels = [];
+        for (var j = 0; j < queueActionAnimations.length; j++) {
+            labels.push(ACTION_LABELS[queueActionAnimations[j]] || queueActionAnimations[j]);
+        }
+        dd.items = labels;
+        if (labels.length > 0) dd.selectedIndex = 0;
+    }
+}
 
 function createQueueTab() {
     return {
         image: "map",
         widgets: [
+            // Play/Pause toggle button (single square button)
             {
-                type: "label",
+                type: "button",
                 x: MARGIN,
                 y: 50,
-                width: 200,
-                height: 14,
-                name: "lblQueue",
-                text: "Action Queue"
+                width: 24,
+                height: 24,
+                name: "btnQueuePlayPause",
+                image: SPR_PAUSE,
+                tooltip: "Play/Pause queue",
+                onClick: function () {
+                    if (isQueuePaused()) {
+                        resumeQueue();
+                    } else {
+                        pauseQueue();
+                    }
+                }
             },
+            // Queue list
             {
                 type: "listview",
                 x: MARGIN,
-                y: 66,
+                y: 78,
                 width: WINDOW_WIDTH - MARGIN * 2,
-                height: 250,
+                height: 240,
                 name: "lvQueue",
                 scrollbars: "vertical",
                 isStriped: true,
                 showColumnHeaders: true,
                 columns: [
-                    { header: "#", width: 30 },
-                    { header: "Target", width: 120 }
+                    { header: "#", width: 24 },
+                    { header: "Action", width: 240 }
                 ],
                 items: [],
                 canSelect: true
@@ -867,17 +1090,86 @@ function createQueueTab() {
                     refreshQueueList();
                 }
             },
-            // Move To (from queue tab)
+            // --- Add Actions ---
+            // Move To
             {
                 type: "button",
                 x: MARGIN,
                 y: 348,
-                width: 185,
+                width: WINDOW_WIDTH - MARGIN * 2,
                 height: 20,
                 name: "btnQueueMove",
                 text: "+ Move To",
                 onClick: function () {
                     activateMoveTool();
+                }
+            },
+            // Action dropdown
+            {
+                type: "dropdown",
+                x: MARGIN,
+                y: 374,
+                width: 130,
+                height: 14,
+                name: "ddQueueAction",
+                items: [],
+                selectedIndex: 0
+            },
+            // Duration label
+            {
+                type: "label",
+                x: 140,
+                y: 374,
+                width: 20,
+                height: 14,
+                name: "lblDuration",
+                text: "for"
+            },
+            // Duration spinner
+            {
+                type: "spinner",
+                x: 160,
+                y: 372,
+                width: 55,
+                height: 16,
+                name: "spnDuration",
+                text: "3s",
+                onDecrement: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var spn = win.findWidget("spnDuration");
+                    var val = parseInt(spn.text) || 3;
+                    if (val > 1) val--;
+                    spn.text = val + "s";
+                },
+                onIncrement: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var spn = win.findWidget("spnDuration");
+                    var val = parseInt(spn.text) || 3;
+                    if (val < 60) val++;
+                    spn.text = val + "s";
+                }
+            },
+            // Add Action button
+            {
+                type: "button",
+                x: 220,
+                y: 372,
+                width: 60,
+                height: 18,
+                name: "btnAddAction",
+                text: "+ Add",
+                onClick: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var dd = win.findWidget("ddQueueAction");
+                    var spn = win.findWidget("spnDuration");
+                    if (!queueActionAnimations.length) return;
+                    var anim = queueActionAnimations[dd.selectedIndex];
+                    var dur = parseInt(spn.text) || 3;
+                    addAction({ type: "action", animation: anim, duration: dur });
+                    refreshQueueList();
                 }
             }
         ]
@@ -887,6 +1179,26 @@ function createQueueTab() {
 function updateQueueTab() {
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win || win.tabIndex !== 2) return;
+
+    var guest = getSelectedGuest();
+    var hasGuest = !!guest;
+
+    // Disable/enable all interactive widgets
+    var disableNames = ["btnQueuePlayPause", "btnDelete", "btnClearAll", "btnQueueMove", "ddQueueAction", "spnDuration", "btnAddAction"];
+    for (var i = 0; i < disableNames.length; i++) {
+        try {
+            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
+        } catch (e) { }
+    }
+
+    // Sync play/pause toggle state (pressed sprite = playing)
+    try {
+        var btnPP = win.findWidget("btnQueuePlayPause");
+        var playing = hasGuest && !isQueuePaused();
+        btnPP.image = playing ? SPR_PAUSE_PRESSED : SPR_PAUSE;
+    } catch (e) { }
+
+    refreshQueueActionDropdown();
     refreshQueueList();
 }
 
@@ -898,9 +1210,16 @@ function refreshQueueList() {
     var items = [];
     for (var i = 0; i < actions.length; i++) {
         var a = actions[i];
+        var desc = "";
+        if (a.type === "action") {
+            var label = ACTION_LABELS[a.animation] || a.animation;
+            desc = label + " (" + a.duration + "s)";
+        } else {
+            desc = "Move \u2192 " + a.target.x + ", " + a.target.y;
+        }
         items.push([
             String(i + 1),
-            a.target.x + ", " + a.target.y
+            desc
         ]);
     }
     lv.items = items;
