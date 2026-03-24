@@ -883,10 +883,12 @@
       }
     } catch (e) {}
 
-    // Action dropdown + perform — always visible (both modes)
+    // Action dropdown + perform — direct mode only
     try {
       var ddAction = win.findWidget("ddAction");
       var btnPerform = win.findWidget("btnPerform");
+      ddAction.isVisible = isDirect;
+      btnPerform.isVisible = isDirect;
       var isIdle = guest && guest.getFlag("positionFrozen");
       ddAction.isDisabled = !hasGuest || !isIdle;
       btnPerform.isDisabled = !hasGuest || !isIdle;
