@@ -1,5 +1,3 @@
-/// <reference path="C:/Program Files/OpenRCT2/bin/openrct2.d.ts" />
-
 import { openWindow } from "./window";
 import { version, name } from "../package.json";
 

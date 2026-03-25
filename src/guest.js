@@ -1,28 +1,13 @@
 var selectedGuestId = null;
 var aiDisabled = true;
 
-// Accessory slot groups — items in the same group are mutually exclusive
-var ACCESSORY_GROUPS = {
-    head: ["hat", "sunglasses"],
-    held: ["balloon", "umbrella"]
-};
+var ACCESSORY_TYPES = [null, "hat", "sunglasses", "balloon", "umbrella"];
+var COLOUR_ACCESSORIES = { hat: true, balloon: true, umbrella: true };
+var DEFAULT_COLOURS = { hat: 6, balloon: 14, umbrella: 0 };
 
-// Default colours for accessories (only items with colour support)
-var ACCESSORY_COLOURS = {
-    hat: 6,
-    balloon: 14,
-    umbrella: 0
-};
-
-// Current state: which item is active per group, and colours
 var accessoryState = {
-    head: null,     // null = none, or "hat"/"sunglasses"
-    held: null,     // null = none, or "balloon"/"umbrella"
-    colours: {
-        hat: 6,
-        balloon: 14,
-        umbrella: 0
-    }
+    active: null,
+    colour: 0
 };
 
 function getSelectedGuest() {
@@ -55,7 +40,6 @@ function getGuestList() {
 }
 
 function setAiDisabled(disabled) {
-    // AI is always disabled in PeepSim
 }
 
 function isAiDisabled() {
@@ -80,52 +64,50 @@ function unfreezeGuest() {
     }
 }
 
-function setAccessoryGroup(group, itemType) {
-    // itemType is null (none) or one of the group's items
-    var prev = accessoryState[group];
-    accessoryState[group] = itemType;
+function setAccessory(type) {
+    var prev = accessoryState.active;
+    accessoryState.active = type;
 
     var guest = getSelectedGuest();
     if (!guest) return;
 
-    // Remove old item from group
     if (prev) {
         guest.removeItem({ type: prev });
     }
 
-    // Give new item
-    if (itemType) {
-        guest.giveItem({ type: itemType });
-        applyAccessoryColour(guest, itemType);
+    if (type) {
+        guest.giveItem({ type: type });
+        if (COLOUR_ACCESSORIES[type]) {
+            applyAccessoryColour(guest, type);
+        }
     }
 }
 
-function setAccessoryColour(type, colour) {
-    accessoryState.colours[type] = colour;
+function setAccessoryColour(colour) {
+    accessoryState.colour = colour;
     var guest = getSelectedGuest();
     if (!guest) return;
-    applyAccessoryColour(guest, type);
+    var type = accessoryState.active;
+    if (type && COLOUR_ACCESSORIES[type]) {
+        applyAccessoryColour(guest, type);
+    }
 }
 
 function applyAccessoryColour(guest, type) {
-    if (type === "hat") guest.hatColour = accessoryState.colours.hat;
-    if (type === "balloon") guest.balloonColour = accessoryState.colours.balloon;
-    if (type === "umbrella") guest.umbrellaColour = accessoryState.colours.umbrella;
+    if (type === "hat") guest.hatColour = accessoryState.colour;
+    if (type === "balloon") guest.balloonColour = accessoryState.colour;
+    if (type === "umbrella") guest.umbrellaColour = accessoryState.colour;
 }
 
 function enforceAccessories() {
     var guest = getSelectedGuest();
     if (!guest) return;
 
-    var groups = Object.keys(ACCESSORY_GROUPS);
-    for (var g = 0; g < groups.length; g++) {
-        var group = groups[g];
-        var active = accessoryState[group];
-        if (active && !guest.hasItem({ type: active })) {
-            guest.giveItem({ type: active });
-            if (accessoryState.colours[active] !== undefined) {
-                applyAccessoryColour(guest, active);
-            }
+    var active = accessoryState.active;
+    if (active && !guest.hasItem({ type: active })) {
+        guest.giveItem({ type: active });
+        if (COLOUR_ACCESSORIES[active]) {
+            applyAccessoryColour(guest, active);
         }
     }
 }
@@ -138,25 +120,18 @@ function syncAccessoriesFromGuest() {
     var guest = getSelectedGuest();
     if (!guest) return;
 
-    // Sync head group
-    if (guest.hasItem({ type: "hat" })) {
-        accessoryState.head = "hat";
-        accessoryState.colours.hat = guest.hatColour;
-    } else if (guest.hasItem({ type: "sunglasses" })) {
-        accessoryState.head = "sunglasses";
-    } else {
-        accessoryState.head = null;
-    }
+    accessoryState.active = null;
+    accessoryState.colour = 0;
 
-    // Sync held group
-    if (guest.hasItem({ type: "balloon" })) {
-        accessoryState.held = "balloon";
-        accessoryState.colours.balloon = guest.balloonColour;
-    } else if (guest.hasItem({ type: "umbrella" })) {
-        accessoryState.held = "umbrella";
-        accessoryState.colours.umbrella = guest.umbrellaColour;
-    } else {
-        accessoryState.held = null;
+    for (var i = 1; i < ACCESSORY_TYPES.length; i++) {
+        var type = ACCESSORY_TYPES[i];
+        if (guest.hasItem({ type: type })) {
+            accessoryState.active = type;
+            if (type === "hat") accessoryState.colour = guest.hatColour;
+            else if (type === "balloon") accessoryState.colour = guest.balloonColour;
+            else if (type === "umbrella") accessoryState.colour = guest.umbrellaColour;
+            break;
+        }
     }
 }
 
@@ -165,7 +140,6 @@ function getSelectedGuestId() {
 }
 
 function resetState() {
-    // Unfreeze current guest before clearing
     var guest = getSelectedGuest();
     if (guest) {
         guest.setFlag("positionFrozen", false);
@@ -175,13 +149,8 @@ function resetState() {
     selectedGuestId = null;
     aiDisabled = true;
     accessoryState = {
-        head: null,
-        held: null,
-        colours: {
-            hat: 6,
-            balloon: 14,
-            umbrella: 0
-        }
+        active: null,
+        colour: 0
     };
 }
 
@@ -195,11 +164,13 @@ export {
     isAiDisabled,
     freezeGuest,
     unfreezeGuest,
-    setAccessoryGroup,
+    setAccessory,
     setAccessoryColour,
     getAccessoryState,
     syncAccessoriesFromGuest,
     enforceAccessories,
     resetState,
-    ACCESSORY_GROUPS
+    ACCESSORY_TYPES,
+    COLOUR_ACCESSORIES,
+    DEFAULT_COLOURS
 };

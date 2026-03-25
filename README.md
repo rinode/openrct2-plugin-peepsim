@@ -1,26 +1,33 @@
 # PeepSim - OpenRCT2 Plugin
 
-A guest simulator plugin for OpenRCT2. Select or spawn a guest and take direct control, move them around the map, customise their appearance, and queue up actions.
+A guest simulator plugin for OpenRCT2. Select or spawn a guest, walk them around, change their look, and queue up sequences of moves and animations.
 
 ## Features
 
 ### Control Tab
-- Select any guest from a dropdown or spawn a new one
+- Select any guest from a dropdown, or spawn a new one
+- Refresh button to reload the guest list
 - Live viewport that follows the selected guest
-- **Move To**: click a tile on the map to walk the guest there, with tile highlighting
-- **Disable AI**: freeze the guest when idle, preventing autonomous behaviour
+- Two control modes:
+  - Direct Control: move with arrow buttons, toggle idle, perform one-off animations
+  - Queued Control: add actions to a queue and play/pause them
+- Move To: click a tile on the map to walk the guest there (highlighted)
+- Directional arrows: walk NE/SE/SW/NW with continuous hold, adjusted for camera rotation
+- Idle toggle: freeze/unfreeze the guest in place
+- Action dropdown: pick an animation and play it while the guest is idle
 
 ### Appearance Tab
-- Change shirt and pants colours
-- Toggle accessories: hat, balloon, umbrella, sunglasses
-- Colour pickers for hat, balloon, and umbrella
-- Accessories are enforced and persist even if the game tries to remove them
+- Shirt and pants colour pickers
+- Accessory dropdown: None, Hat, Sunglasses, Balloon, or Umbrella (one at a time)
+- Colour picker for accessories that support it (hat, balloon, umbrella)
+- Accessories are enforced and persist while the window is open
 
 ### Queue Tab
-- View all queued move actions in a list
-- Add actions from the queue tab with **+ Move To**
+- Play/Pause toggle for the action queue
+- Queue list showing all actions (moves and animations) in order
 - Delete individual actions or clear the entire queue
-- Actions execute sequentially with automatic stuck detection
+- Add move actions with "+ Move To" or timed animations with "+ Add"
+- Actions run sequentially with stuck detection
 
 ## Requirements
 

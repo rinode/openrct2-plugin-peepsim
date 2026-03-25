@@ -6,12 +6,15 @@ import {
     getGuestList,
     freezeGuest,
     unfreezeGuest,
-    setAccessoryGroup,
+    setAccessory,
     setAccessoryColour,
     getAccessoryState,
     syncAccessoriesFromGuest,
     enforceAccessories,
-    resetState
+    resetState,
+    ACCESSORY_TYPES,
+    COLOUR_ACCESSORIES,
+    DEFAULT_COLOURS
 } from "./guest";
 import {
     addAction,
@@ -36,9 +39,9 @@ var WINDOW_CLASS = "peepsim-main";
 var WINDOW_WIDTH = 300;
 var WINDOW_HEIGHT = 460;
 var MARGIN = 5;
-var VP_WIDTH = WINDOW_WIDTH - MARGIN * 2; // 290
-var VP_HEIGHT = Math.round(VP_WIDTH * 9 / 16); // 163 (16:9)
-var VP_BOTTOM = 50 + VP_HEIGHT; // 213
+var VP_WIDTH = WINDOW_WIDTH - MARGIN * 2;
+var VP_HEIGHT = Math.round(VP_WIDTH * 9 / 16);
+var VP_BOTTOM = 50 + VP_HEIGHT;
 
 function openWindow() {
     var existing = ui.getWindow(WINDOW_CLASS);
@@ -65,7 +68,6 @@ function openWindow() {
         ],
         tabIndex: 0,
         onTabChange: function () {
-            // Refresh widgets when switching tabs
             updateControlTab();
             updateAppearanceTab();
             updateQueueTab();
@@ -93,13 +95,11 @@ function openWindow() {
     });
 }
 
-// Sprite IDs for directional arrows (from maze construction)
 var SPR_DIR_NE = 5635;
 var SPR_DIR_SE = 5636;
 var SPR_DIR_SW = 5637;
 var SPR_DIR_NW = 5638;
 
-// Direction tool state
 var heldDirection = -1;
 var directionInterval = null;
 
@@ -109,31 +109,25 @@ function startDirectionTool(direction) {
         return;
     }
 
-    // If already holding this direction, toggle off
     if (heldDirection === direction) {
         stopDirectionTool();
         freezeGuest();
         return;
     }
 
-    // Stop any previous direction hold
     if (directionInterval !== null) {
         context.clearInterval(directionInterval);
         directionInterval = null;
     }
 
     heldDirection = direction;
-
-    // Start walking immediately
     directWalk(direction);
 
-    // Keep re-pointing destination ahead every 400ms
     directionInterval = context.setInterval(function () {
         if (heldDirection < 0) return;
         directWalk(heldDirection);
     }, 400);
 
-    // Update button visuals
     updateArrowPressed();
 }
 
@@ -165,27 +159,23 @@ function updateArrowPressed() {
     }
 }
 
-// ==================== CONTROL TAB ==
-
-// Pause sprites (unpressed / pressed, like the toolbar)
 var SPR_PAUSE = 5597;
 var SPR_PAUSE_PRESSED = 5598;
 
 function createControlTab() {
-    var Y_GUEST = VP_BOTTOM + 4;      // 217
-    var Y_MODE  = Y_GUEST + 18;       // 235
-    var Y_MOVE  = Y_MODE + 20;        // 255
-    var Y_ARROWS = Y_MOVE + 24;       // 279
-    var Y_ARROWS2 = Y_ARROWS + 29;    // 308
-    var Y_IDLE  = Y_ARROWS2 + 29;     // 337
-    var Y_ACTION = Y_IDLE + 28;       // 365
-    var Y_QADD  = Y_ACTION + 20;      // 385
-    var Y_QPLAY = Y_QADD + 20;       // 405
+    var Y_GUEST = VP_BOTTOM + 4;
+    var Y_MODE  = Y_GUEST + 18;
+    var Y_MOVE  = Y_MODE + 20;
+    var Y_ARROWS = Y_MOVE + 24;
+    var Y_ARROWS2 = Y_ARROWS + 29;
+    var Y_IDLE  = Y_ARROWS2 + 29;
+    var Y_ACTION = Y_IDLE + 28;
+    var Y_QADD  = Y_ACTION + 20;
+    var Y_QPLAY = Y_QADD + 20;
 
     return {
         image: "guests",
         widgets: [
-            // Viewport (same position/size as appearance tab — 16:9)
             {
                 type: "viewport",
                 x: MARGIN,
@@ -194,7 +184,6 @@ function createControlTab() {
                 height: VP_HEIGHT,
                 name: "vpGuest"
             },
-            // Guest selection dropdown
             {
                 type: "label",
                 x: MARGIN,
@@ -208,7 +197,7 @@ function createControlTab() {
                 type: "dropdown",
                 x: 50,
                 y: Y_GUEST - 2,
-                width: 180,
+                width: 140,
                 height: 14,
                 name: "ddGuest",
                 items: ["(none)"],
@@ -226,26 +215,23 @@ function createControlTab() {
                     }
                 }
             },
-            // Refresh button
             {
                 type: "button",
-                x: 235,
+                x: 195,
                 y: Y_GUEST - 2,
-                width: 24,
+                width: 50,
                 height: 14,
                 name: "btnRefresh",
-                text: "R",
-                tooltip: "Refresh guest list",
+                text: "Refresh",
                 onClick: function () {
                     refreshGuestDropdown();
                 }
             },
-            // Spawn button
             {
                 type: "button",
-                x: 262,
+                x: 250,
                 y: Y_GUEST - 2,
-                width: 30,
+                width: 42,
                 height: 14,
                 name: "btnSpawn",
                 text: "New",
@@ -259,7 +245,6 @@ function createControlTab() {
                     refreshQueueActionDropdown();
                 }
             },
-            // Mode selector
             {
                 type: "label",
                 x: MARGIN,
@@ -284,7 +269,6 @@ function createControlTab() {
                     updateDirectWidgets();
                 }
             },
-            // Move To button (both modes)
             {
                 type: "button",
                 x: MARGIN,
@@ -298,8 +282,6 @@ function createControlTab() {
                     activateMoveTool();
                 }
             },
-            // --- Directional arrows (direct mode only) ---
-            // NW arrow (top-left)
             {
                 type: "button",
                 x: 105,
@@ -312,7 +294,6 @@ function createControlTab() {
                     startDirectionTool(3);
                 }
             },
-            // NE arrow (top-right)
             {
                 type: "button",
                 x: 150,
@@ -325,7 +306,6 @@ function createControlTab() {
                     startDirectionTool(0);
                 }
             },
-            // SW arrow (bottom-left)
             {
                 type: "button",
                 x: 105,
@@ -338,7 +318,6 @@ function createControlTab() {
                     startDirectionTool(2);
                 }
             },
-            // SE arrow (bottom-right)
             {
                 type: "button",
                 x: 150,
@@ -351,7 +330,6 @@ function createControlTab() {
                     startDirectionTool(1);
                 }
             },
-            // Idle button (square, pause sprite — direct mode only)
             {
                 type: "button",
                 x: 138,
@@ -374,7 +352,6 @@ function createControlTab() {
                     }
                 }
             },
-            // Action dropdown + perform button (both modes)
             {
                 type: "dropdown",
                 x: MARGIN,
@@ -398,8 +375,6 @@ function createControlTab() {
                     performSelectedAction();
                 }
             },
-            // --- Queued mode widgets ---
-            // Queue action dropdown + duration + add
             {
                 type: "dropdown",
                 x: MARGIN,
@@ -464,7 +439,6 @@ function createControlTab() {
                     refreshQueueList();
                 }
             },
-            // Queue play/pause toggle (queued mode only)
             {
                 type: "button",
                 x: 272,
@@ -494,7 +468,6 @@ function updateDirectWidgets() {
     var guest = getSelectedGuest();
     var hasGuest = !!guest;
 
-    // Arrow buttons — direct mode only
     var arrowNames = ["btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE"];
     for (var i = 0; i < arrowNames.length; i++) {
         try {
@@ -503,7 +476,6 @@ function updateDirectWidgets() {
         } catch (e) { }
     }
 
-    // Idle button — direct mode only
     try {
         var btnIdle = win.findWidget("btnIdle");
         btnIdle.isVisible = isDirect;
@@ -513,7 +485,6 @@ function updateDirectWidgets() {
         }
     } catch (e) { }
 
-    // Action dropdown + perform — direct mode only
     try {
         var ddAction = win.findWidget("ddAction");
         var btnPerform = win.findWidget("btnPerform");
@@ -524,30 +495,34 @@ function updateDirectWidgets() {
         btnPerform.isDisabled = !hasGuest || !isIdle;
     } catch (e) { }
 
-    // Queued mode widgets — only visible in queued mode
-    var queuedWidgets = ["ddCtrlQueueAction", "lblCtrlDuration", "spnCtrlDuration", "btnCtrlAddAction", "btnCtrlPlayPause"];
-    for (var j = 0; j < queuedWidgets.length; j++) {
+    var Y_QUEUE_UP = VP_BOTTOM + 46;
+    var queuedPositions = [
+        { name: "ddCtrlQueueAction", y: Y_QUEUE_UP },
+        { name: "lblCtrlDuration", y: Y_QUEUE_UP },
+        { name: "spnCtrlDuration", y: Y_QUEUE_UP - 2 },
+        { name: "btnCtrlAddAction", y: Y_QUEUE_UP - 2 },
+        { name: "btnCtrlPlayPause", y: Y_QUEUE_UP - 2 }
+    ];
+    for (var j = 0; j < queuedPositions.length; j++) {
         try {
-            var w = win.findWidget(queuedWidgets[j]);
+            var w = win.findWidget(queuedPositions[j].name);
             w.isVisible = !isDirect;
             w.isDisabled = !hasGuest;
+            if (!isDirect) w.y = queuedPositions[j].y;
         } catch (e) { }
     }
 
-    // Sync queue play/pause button state
     try {
         var btnPP = win.findWidget("btnCtrlPlayPause");
         var playing = hasGuest && !isQueuePaused();
         btnPP.image = playing ? SPR_PAUSE_PRESSED : SPR_PAUSE;
     } catch (e) { }
 
-    // Sync queued mode action dropdown
     if (!isDirect) {
         refreshCtrlQueueActionDropdown();
     }
 }
 
-// Nice display names for animations
 var ACTION_LABELS = {
     jump: "Jump",
     takePhoto: "Take Photo",
@@ -568,7 +543,6 @@ var ACTION_LABELS = {
     eatFood: "Eat Food"
 };
 
-// Animations to exclude from the dropdown (boring/internal)
 var ACTION_EXCLUDE = [
     "walking", "watchRide", "holdMat",
     "sittingIdle", "sittingEatFood",
@@ -576,7 +550,7 @@ var ACTION_EXCLUDE = [
     "hanging", "drowning"
 ];
 
-var actionAnimations = []; // mapped list for current guest
+var actionAnimations = [];
 
 function refreshActionDropdown() {
     var win = ui.getWindow(WINDOW_CLASS);
@@ -641,7 +615,6 @@ function performSelectedAction() {
 
     var anim = actionAnimations[idx];
 
-    // Stop any previous animation playback
     if (actionPlayInterval !== null) {
         context.clearInterval(actionPlayInterval);
         actionPlayInterval = null;
@@ -654,7 +627,6 @@ function performSelectedAction() {
     actionPlayInterval = context.setInterval(function () {
         var g = getSelectedGuest();
         if (!g || g.animation !== anim) {
-            // Animation was changed externally, stop tracking
             if (actionPlayInterval !== null) {
                 context.clearInterval(actionPlayInterval);
                 actionPlayInterval = null;
@@ -662,7 +634,7 @@ function performSelectedAction() {
             return;
         }
         var offset = g.animationOffset;
-        // Detect wrap-around: offset went backwards means animation completed
+        // Offset going backwards means the animation looped
         if (prevOffset >= 0 && offset < prevOffset) {
             g.animation = "watchRide";
             g.animationOffset = 0;
@@ -699,7 +671,6 @@ function updateControlTab() {
     var guest = getSelectedGuest();
     var hasGuest = !!guest;
 
-    // Sync mode dropdown
     var ddMode = win.findWidget("ddMode");
     var modeIndex = getControlMode() === "direct" ? 0 : 1;
     if (ddMode.selectedIndex !== modeIndex) {
@@ -707,7 +678,6 @@ function updateControlTab() {
     }
     ddMode.isDisabled = !hasGuest;
 
-    // Disable/enable interactive widgets based on guest selection
     var disableNames = ["btnMoveTo", "btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE", "btnIdle", "ddAction", "btnPerform"];
     for (var i = 0; i < disableNames.length; i++) {
         try {
@@ -715,10 +685,8 @@ function updateControlTab() {
         } catch (e) { }
     }
 
-    // Sync arrow visibility & mode widgets
     updateDirectWidgets();
 
-    // Update arrow pressed state (remembers direction across tab switches)
     updateArrowPressed();
 
     if (guest) {
@@ -734,7 +702,6 @@ function activateMoveTool() {
         ui.showError("PeepSim", "No guest selected!");
         return;
     }
-    // Stop any active direction hold
     stopDirectionTool();
     ui.activateTool({
         id: "peepsim-move",
@@ -763,26 +730,14 @@ function activateMoveTool() {
     });
 }
 
-// ==================== APPEARANCE TAB ====================
-
-// Display labels for accessory types
-var ACCESSORY_LABELS = {
-    hat: "Hat",
-    sunglasses: "Sunglasses",
-    balloon: "Balloon",
-    umbrella: "Umbrella"
-};
-
-// Which items in a group support colour
-var COLOUR_ITEMS = { hat: true, balloon: true, umbrella: true };
+var ACCESSORY_LABELS = ["None", "Hat", "Sunglasses", "Balloon", "Umbrella"];
 
 function createAppearanceTab() {
-    var Y0 = VP_BOTTOM + 4; // first row below viewport
+    var Y0 = VP_BOTTOM + 4;
 
     return {
-        image: "ride",
+        image: { frameBase: 5221, frameCount: 8, frameDuration: 4 },
         widgets: [
-            // Guest preview viewport (same position/size as control tab — 16:9)
             {
                 type: "viewport",
                 x: MARGIN,
@@ -791,7 +746,6 @@ function createAppearanceTab() {
                 height: VP_HEIGHT,
                 name: "vpPreview"
             },
-            // Shirt colour
             {
                 type: "label",
                 x: MARGIN,
@@ -814,7 +768,6 @@ function createAppearanceTab() {
                     if (guest) guest.tshirtColour = colour;
                 }
             },
-            // Pants colour
             {
                 type: "label",
                 x: MARGIN,
@@ -837,89 +790,49 @@ function createAppearanceTab() {
                     if (guest) guest.trousersColour = colour;
                 }
             },
-            // --- Accessories ---
             {
-                type: "groupbox",
+                type: "label",
                 x: MARGIN,
-                y: Y0 + 40,
-                width: WINDOW_WIDTH - MARGIN * 2,
-                height: 64,
-                name: "gbAccessories",
-                text: "Accessories"
-            },
-            // Head slot: None / Hat / Sunglasses
-            {
-                type: "label",
-                x: MARGIN + 5,
-                y: Y0 + 58,
-                width: 40,
+                y: Y0 + 44,
+                width: 80,
                 height: 14,
-                name: "lblHead",
-                text: "Head:"
+                name: "lblAccessory",
+                text: "Accessory:"
             },
             {
                 type: "dropdown",
-                x: 60,
-                y: Y0 + 56,
+                x: 100,
+                y: Y0 + 42,
                 width: 110,
                 height: 14,
-                name: "ddHead",
-                items: ["None", "Hat", "Sunglasses"],
+                name: "ddAccessory",
+                items: ACCESSORY_LABELS,
                 selectedIndex: 0,
                 onChange: function (index) {
-                    var items = [null, "hat", "sunglasses"];
-                    setAccessoryGroup("head", items[index]);
-                }
-            },
-            {
-                type: "colourpicker",
-                x: 180,
-                y: Y0 + 56,
-                width: 12,
-                height: 12,
-                name: "cpHead",
-                colour: 6,
-                onChange: function (colour) {
-                    setAccessoryColour("hat", colour);
-                }
-            },
-            // Held slot: None / Balloon / Umbrella
-            {
-                type: "label",
-                x: MARGIN + 5,
-                y: Y0 + 78,
-                width: 40,
-                height: 14,
-                name: "lblHeld",
-                text: "Held:"
-            },
-            {
-                type: "dropdown",
-                x: 60,
-                y: Y0 + 76,
-                width: 110,
-                height: 14,
-                name: "ddHeld",
-                items: ["None", "Balloon", "Umbrella"],
-                selectedIndex: 0,
-                onChange: function (index) {
-                    var items = [null, "balloon", "umbrella"];
-                    setAccessoryGroup("held", items[index]);
-                }
-            },
-            {
-                type: "colourpicker",
-                x: 180,
-                y: Y0 + 76,
-                width: 12,
-                height: 12,
-                name: "cpHeld",
-                colour: 14,
-                onChange: function (colour) {
-                    var state = getAccessoryState();
-                    if (state.held && COLOUR_ITEMS[state.held]) {
-                        setAccessoryColour(state.held, colour);
+                    var type = ACCESSORY_TYPES[index];
+                    if (type && COLOUR_ACCESSORIES[type]) {
+                        setAccessory(type);
+                        var win = ui.getWindow(WINDOW_CLASS);
+                        if (win) {
+                            var cp = win.findWidget("cpAccessory");
+                            cp.colour = DEFAULT_COLOURS[type];
+                            setAccessoryColour(DEFAULT_COLOURS[type]);
+                        }
+                    } else {
+                        setAccessory(type);
                     }
+                }
+            },
+            {
+                type: "colourpicker",
+                x: 220,
+                y: Y0 + 42,
+                width: 12,
+                height: 12,
+                name: "cpAccessory",
+                colour: 0,
+                onChange: function (colour) {
+                    setAccessoryColour(colour);
                 }
             }
         ]
@@ -933,8 +846,7 @@ function updateAppearanceTab() {
     var guest = getSelectedGuest();
     var hasGuest = !!guest;
 
-    // Disable/enable all interactive widgets
-    var disableNames = ["cpShirt", "cpPants", "ddHead", "cpHead", "ddHeld", "cpHeld"];
+    var disableNames = ["cpShirt", "cpPants", "ddAccessory", "cpAccessory"];
     for (var i = 0; i < disableNames.length; i++) {
         try {
             win.findWidget(disableNames[i]).isDisabled = !hasGuest;
@@ -943,51 +855,26 @@ function updateAppearanceTab() {
 
     if (!guest) return;
 
-    // Sync preview viewport
     var vpPreview = win.findWidget("vpPreview");
     if (vpPreview && vpPreview.viewport) {
         vpPreview.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
     }
 
-    // Sync clothing colours
     win.findWidget("cpShirt").colour = guest.tshirtColour;
     win.findWidget("cpPants").colour = guest.trousersColour;
 
-    // Sync accessory state from guest
     var state = getAccessoryState();
+    var ddAccessory = win.findWidget("ddAccessory");
+    var accIdx = ACCESSORY_TYPES.indexOf(state.active);
+    if (accIdx < 0) accIdx = 0;
+    ddAccessory.selectedIndex = accIdx;
 
-    // Head dropdown
-    var ddHead = win.findWidget("ddHead");
-    var headItems = [null, "hat", "sunglasses"];
-    var headIdx = headItems.indexOf(state.head);
-    if (headIdx < 0) headIdx = 0;
-    ddHead.selectedIndex = headIdx;
-
-    // Head colour picker — only enabled for hat
-    var cpHead = win.findWidget("cpHead");
-    cpHead.isDisabled = state.head !== "hat";
-    if (state.head === "hat") {
-        cpHead.colour = state.colours.hat;
-    }
-
-    // Held dropdown
-    var ddHeld = win.findWidget("ddHeld");
-    var heldItems = [null, "balloon", "umbrella"];
-    var heldIdx = heldItems.indexOf(state.held);
-    if (heldIdx < 0) heldIdx = 0;
-    ddHeld.selectedIndex = heldIdx;
-
-    // Held colour picker — enabled for balloon or umbrella
-    var cpHeld = win.findWidget("cpHeld");
-    cpHeld.isDisabled = !state.held || !COLOUR_ITEMS[state.held];
-    if (state.held === "balloon") {
-        cpHeld.colour = state.colours.balloon;
-    } else if (state.held === "umbrella") {
-        cpHeld.colour = state.colours.umbrella;
+    var cpAccessory = win.findWidget("cpAccessory");
+    cpAccessory.isDisabled = !state.active || !COLOUR_ACCESSORIES[state.active];
+    if (state.active && COLOUR_ACCESSORIES[state.active]) {
+        cpAccessory.colour = state.colour;
     }
 }
-
-// ==================== QUEUE TAB ====================
 
 var queueActionAnimations = [];
 
@@ -1021,9 +908,8 @@ function refreshQueueActionDropdown() {
 
 function createQueueTab() {
     return {
-        image: "map",
+        image: "path_railings",
         widgets: [
-            // Play/Pause toggle button (single square button)
             {
                 type: "button",
                 x: MARGIN,
@@ -1041,7 +927,6 @@ function createQueueTab() {
                     }
                 }
             },
-            // Queue list
             {
                 type: "listview",
                 x: MARGIN,
@@ -1059,7 +944,6 @@ function createQueueTab() {
                 items: [],
                 canSelect: true
             },
-            // Delete button
             {
                 type: "button",
                 x: MARGIN,
@@ -1078,7 +962,6 @@ function createQueueTab() {
                     }
                 }
             },
-            // Clear all button
             {
                 type: "button",
                 x: 100,
@@ -1092,8 +975,6 @@ function createQueueTab() {
                     refreshQueueList();
                 }
             },
-            // --- Add Actions ---
-            // Move To
             {
                 type: "button",
                 x: MARGIN,
@@ -1106,7 +987,6 @@ function createQueueTab() {
                     activateMoveTool();
                 }
             },
-            // Action dropdown
             {
                 type: "dropdown",
                 x: MARGIN,
@@ -1117,7 +997,6 @@ function createQueueTab() {
                 items: [],
                 selectedIndex: 0
             },
-            // Duration label
             {
                 type: "label",
                 x: 140,
@@ -1127,7 +1006,6 @@ function createQueueTab() {
                 name: "lblDuration",
                 text: "for"
             },
-            // Duration spinner
             {
                 type: "spinner",
                 x: 160,
@@ -1153,7 +1031,6 @@ function createQueueTab() {
                     spn.text = val + "s";
                 }
             },
-            // Add Action button
             {
                 type: "button",
                 x: 220,
@@ -1185,7 +1062,6 @@ function updateQueueTab() {
     var guest = getSelectedGuest();
     var hasGuest = !!guest;
 
-    // Disable/enable all interactive widgets
     var disableNames = ["btnQueuePlayPause", "btnDelete", "btnClearAll", "btnQueueMove", "ddQueueAction", "spnDuration", "btnAddAction"];
     for (var i = 0; i < disableNames.length; i++) {
         try {
@@ -1193,7 +1069,6 @@ function updateQueueTab() {
         } catch (e) { }
     }
 
-    // Sync play/pause toggle state (pressed sprite = playing)
     try {
         var btnPP = win.findWidget("btnQueuePlayPause");
         var playing = hasGuest && !isQueuePaused();
