@@ -38,18 +38,16 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest, walk them around
 
 1. Clone the repository
 2. Run `npm install`
-3. Copy `deploy.config.example.json` to `deploy.config.json`
-4. Update `pluginPath` to your OpenRCT2 plugin directory:
-   - Windows: `C:/Users/<YourUsername>/Documents/OpenRCT2/plugin/`
-   - macOS: `~/Library/Application Support/OpenRCT2/plugin/`
-   - Linux: `~/.config/OpenRCT2/plugin/`
-5. Run `npm run build && npm run deploy`
+3. Set the `OPENRCT2_PLUGIN_PATH` environment variable to your OpenRCT2 plugin directory:
+   - Windows: `C:/Users/<YourUsername>/Documents/OpenRCT2/plugin`
+   - macOS: `~/Library/Application Support/OpenRCT2/plugin`
+   - Linux: `~/.config/OpenRCT2/plugin`
+4. Run `npm run develop` to build and output directly to your plugin folder (with watch mode)
 
 ## Build Commands
 
-- `npm run build`: Build the plugin
-- `npm run watch`: Rebuild automatically on source changes
-- `npm run deploy`: Copy the built plugin to your OpenRCT2 plugin directory
+- `npm run build`: Build a release version to `./build/`
+- `npm run develop`: Build to your plugin folder and watch for changes
 
 ## Development
 
