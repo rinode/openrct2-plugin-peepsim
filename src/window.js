@@ -495,7 +495,7 @@ function updateDirectWidgets() {
         btnPerform.isDisabled = !hasGuest || !isIdle;
     } catch (e) { }
 
-    var Y_QUEUE_UP = VP_BOTTOM + 46;
+    var Y_QUEUE_UP = VP_BOTTOM + 66;
     var queuedPositions = [
         { name: "ddCtrlQueueAction", y: Y_QUEUE_UP },
         { name: "lblCtrlDuration", y: Y_QUEUE_UP },
@@ -515,7 +515,7 @@ function updateDirectWidgets() {
     try {
         var btnPP = win.findWidget("btnCtrlPlayPause");
         var playing = hasGuest && !isQueuePaused();
-        btnPP.image = playing ? SPR_PAUSE_PRESSED : SPR_PAUSE;
+        btnPP.image = playing ? SPR_PAUSE : SPR_PAUSE_PRESSED;
     } catch (e) { }
 
     if (!isDirect) {
@@ -1072,7 +1072,7 @@ function updateQueueTab() {
     try {
         var btnPP = win.findWidget("btnQueuePlayPause");
         var playing = hasGuest && !isQueuePaused();
-        btnPP.image = playing ? SPR_PAUSE_PRESSED : SPR_PAUSE;
+        btnPP.image = playing ? SPR_PAUSE : SPR_PAUSE_PRESSED;
     } catch (e) { }
 
     refreshQueueActionDropdown();

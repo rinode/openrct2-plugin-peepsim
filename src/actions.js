@@ -101,12 +101,12 @@ function directMoveDirection(direction) {
     var tileY = Math.floor(guest.y / 32);
 
     var rotation = ui.mainViewport.rotation;
-    var adjusted = (direction + rotation) & 3;
+    var adjusted = (direction - rotation + 4) & 3;
 
-    if (adjusted === 0) { tileX -= 1; tileY += 0; }
-    else if (adjusted === 1) { tileX += 0; tileY += 1; }
-    else if (adjusted === 2) { tileX += 1; tileY += 0; }
-    else if (adjusted === 3) { tileX += 0; tileY -= 1; }
+    if (adjusted === 0) { tileX -= 1; }
+    else if (adjusted === 1) { tileY += 1; }
+    else if (adjusted === 2) { tileX += 1; }
+    else if (adjusted === 3) { tileY -= 1; }
 
     directMove(tileX, tileY, true);
 }
@@ -123,7 +123,7 @@ function directWalk(direction) {
     }
 
     var rotation = ui.mainViewport.rotation;
-    var adjusted = (direction + rotation) & 3;
+    var adjusted = (direction - rotation + 4) & 3;
 
     var dx = 0, dy = 0;
     if (adjusted === 0) { dx = -2; }

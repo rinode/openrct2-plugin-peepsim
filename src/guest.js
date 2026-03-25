@@ -81,6 +81,8 @@ function setAccessory(type) {
             applyAccessoryColour(guest, type);
         }
     }
+
+    freezeGuest();
 }
 
 function setAccessoryColour(colour) {
