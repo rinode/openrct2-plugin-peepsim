@@ -7,6 +7,9 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest, walk them around
 The window has three tabs, each with a live viewport that follows the selected guest.
 
 ### Direct Control
+
+![Direct Control tab](peepsim-tab1.png)
+
 - Select any guest from a dropdown, or spawn a new one
 - Guest list refreshes automatically
 - Move To: click a tile on the map to walk the guest there
@@ -15,6 +18,9 @@ The window has three tabs, each with a live viewport that follows the selected g
 - Action dropdown: pick an animation and perform it while idle
 
 ### Queued Control
+
+![Queued Control tab](peepsim-tab2.png)
+
 - Build a queue of moves and timed animations that run sequentially
 - Play/Pause toggle for the queue (auto-pauses when finished)
 - Delete individual actions or clear the entire queue
@@ -22,6 +28,9 @@ The window has three tabs, each with a live viewport that follows the selected g
 - Stuck detection for move actions
 
 ### Appearance
+
+![Appearance tab](peepsim-tab3.png)
+
 - Shirt and pants colour pickers
 - Accessory dropdown: None, Hat, Sunglasses, Balloon, or Umbrella (one at a time)
 - Colour picker for accessories that support it (hat, balloon, umbrella)
