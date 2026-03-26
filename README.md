@@ -4,30 +4,28 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest, walk them around
 
 ## Features
 
-### Control Tab
-- Select any guest from a dropdown, or spawn a new one
-- Refresh button to reload the guest list
-- Live viewport that follows the selected guest
-- Two control modes:
-  - Direct Control: move with arrow buttons, toggle idle, perform one-off animations
-  - Queued Control: add actions to a queue and play/pause them
-- Move To: click a tile on the map to walk the guest there (highlighted)
-- Directional arrows: walk NE/SE/SW/NW with continuous hold, adjusted for camera rotation
-- Idle toggle: freeze/unfreeze the guest in place
-- Action dropdown: pick an animation and play it while the guest is idle
+The window has three tabs, each with a live viewport that follows the selected guest.
 
-### Appearance Tab
+### Direct Control
+- Select any guest from a dropdown, or spawn a new one
+- Guest list refreshes automatically
+- Move To: click a tile on the map to walk the guest there
+- Directional arrows: walk NE/SE/SW/NW continuously, adjusted for camera rotation
+- Idle toggle: freeze/unfreeze the guest in place
+- Action dropdown: pick an animation and perform it while idle
+
+### Queued Control
+- Build a queue of moves and timed animations that run sequentially
+- Play/Pause toggle for the queue (auto-pauses when finished)
+- Delete individual actions or clear the entire queue
+- Add move targets with "+ Move To" or timed animations with "+ Add"
+- Stuck detection for move actions
+
+### Appearance
 - Shirt and pants colour pickers
 - Accessory dropdown: None, Hat, Sunglasses, Balloon, or Umbrella (one at a time)
 - Colour picker for accessories that support it (hat, balloon, umbrella)
-- Accessories are enforced and persist while the window is open
-
-### Queue Tab
-- Play/Pause toggle for the action queue
-- Queue list showing all actions (moves and animations) in order
-- Delete individual actions or clear the entire queue
-- Add move actions with "+ Move To" or timed animations with "+ Add"
-- Actions run sequentially with stuck detection
+- Accessories persist while the window is open
 
 ## Requirements
 
@@ -52,24 +50,21 @@ A guest simulator plugin for OpenRCT2. Select or spawn a guest, walk them around
 ## Development
 
 Source files are in `src/`:
-- `src/index.js`: Entry point
-- `src/window.js`: PeepSim window
-- `src/guest.js`: Guest state management
-- `src/actions.js`: Action queue executor
+- `index.js` — Entry point, registers the plugin
+- `window.js` — Window layout and per-tab update logic
+- `guest.js` — Guest state and accessory management
+- `actions.js` — Action queue and tick executor
 
-The plugin name and version are read from `package.json` automatically.
+Plugin name and version are read from `package.json`.
 
 ## Releases
 
-Releases are automated via GitHub Actions:
+Releases are automated via GitHub Actions. Push a version tag to trigger a build:
 
-1. Commit your changes
-2. Create and push a version tag:
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-3. GitHub Actions will build the plugin and create a GitHub release with the `.js` file attached.
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
 
 ## License
 

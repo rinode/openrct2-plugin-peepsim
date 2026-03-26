@@ -37,7 +37,6 @@ import {
 
 var WINDOW_CLASS = "peepsim-main";
 var WINDOW_WIDTH = 300;
-var WINDOW_HEIGHT = 460;
 var MARGIN = 5;
 var VP_WIDTH = WINDOW_WIDTH - MARGIN * 2;
 var VP_HEIGHT = Math.round(VP_WIDTH * 9 / 16);
@@ -45,6 +44,7 @@ var VP_BOTTOM = 50 + VP_HEIGHT;
 
 var guestRefreshCounter = 0;
 var GUEST_REFRESH_INTERVAL = 80;
+var lastTabIndex = -1;
 
 function openWindow() {
     var existing = ui.getWindow(WINDOW_CLASS);
@@ -55,32 +55,71 @@ function openWindow() {
 
     startExecutor();
     initPauseSprites();
+    lastTabIndex = 0;
+
+    var directTab = createDirectTab();
+    var queuedTab = createQueuedTab();
+    var appearanceTab = createAppearanceTab();
+    var tabHeights = [directTab._height, queuedTab._height, appearanceTab._height];
+    var initH = tabHeights[0];
+
+    function resizeToTab(win) {
+        var h = tabHeights[win.tabIndex];
+        win.minHeight = Math.min(h, win.height);
+        win.maxHeight = Math.max(h, win.height);
+        win.height = h;
+        win.minHeight = h;
+        win.maxHeight = h;
+    }
 
     ui.openWindow({
         classification: WINDOW_CLASS,
         title: "PeepSim",
         width: WINDOW_WIDTH,
-        height: WINDOW_HEIGHT,
+        height: initH,
         minWidth: WINDOW_WIDTH,
         maxWidth: WINDOW_WIDTH,
-        minHeight: WINDOW_HEIGHT,
-        maxHeight: WINDOW_HEIGHT,
+        minHeight: initH,
+        maxHeight: initH,
+        colours: [1, 15, 15],
         tabs: [
-            createControlTab(),
-            createAppearanceTab(),
-            createQueueTab()
+            directTab,
+            queuedTab,
+            appearanceTab
         ],
         tabIndex: 0,
         onTabChange: function () {
+            var win = ui.getWindow(WINDOW_CLASS);
+            if (!win) return;
+            var newTab = win.tabIndex;
+            if (newTab !== lastTabIndex) {
+                stopDirectionTool();
+                deactivateMoveTool();
+                if (lastTabIndex === 0 && newTab === 1) {
+                    clearActions();
+                    freezeGuest();
+                    pauseQueue();
+                } else if (lastTabIndex === 1 && newTab === 0) {
+                    clearActions();
+                    freezeGuest();
+                }
+                lastTabIndex = newTab;
+                if (newTab === 0) {
+                    setControlMode("direct");
+                } else if (newTab === 1) {
+                    setControlMode("queued");
+                }
+            }
             refreshGuestDropdown();
-            updateControlTab();
+            resizeToTab(win);
+            updateDirectTab();
+            updateQueuedTab();
             updateAppearanceTab();
-            updateQueueTab();
         },
         onUpdate: function () {
-            updateControlTab();
+            updateDirectTab();
+            updateQueuedTab();
             updateAppearanceTab();
-            updateQueueTab();
             enforceAccessories();
             guestRefreshCounter++;
             if (guestRefreshCounter >= GUEST_REFRESH_INTERVAL) {
@@ -213,113 +252,122 @@ function getPauseImage(pressed) {
     return pauseSlotNormal >= 0 ? pauseSlotNormal : SPR_PAUSE;
 }
 
-function createControlTab() {
+function onGuestSelected(index) {
+    stopDirectionTool();
+    deactivateMoveTool();
+    clearHighlight();
+    clearActions();
+    pauseQueue();
+    resetState();
+    var list = getGuestList();
+    if (index > 0 && index <= list.length) {
+        selectGuest(list[index - 1].id);
+        freezeGuest();
+        syncAccessoriesFromGuest();
+        refreshActionDropdown();
+        refreshQueueActionDropdown();
+    }
+}
+
+function onSpawnGuest() {
+    stopDirectionTool();
+    deactivateMoveTool();
+    clearHighlight();
+    clearActions();
+    pauseQueue();
+    resetState();
+    spawnGuest();
+    freezeGuest();
+    syncAccessoriesFromGuest();
+    refreshGuestDropdown();
+    refreshActionDropdown();
+    refreshQueueActionDropdown();
+}
+
+function guestWidgets(yGuest) {
+    return [
+        {
+            type: "label",
+            x: MARGIN,
+            y: yGuest,
+            width: 50,
+            height: 14,
+            name: "lblGuest",
+            text: "Guest:"
+        },
+        {
+            type: "dropdown",
+            x: 50,
+            y: yGuest - 2,
+            width: 192,
+            height: 14,
+            name: "ddGuest",
+            items: ["(none)"],
+            selectedIndex: 0,
+            onChange: function (index) { onGuestSelected(index); }
+        },
+        {
+            type: "button",
+            x: 250,
+            y: yGuest - 2,
+            width: 42,
+            height: 14,
+            name: "btnSpawn",
+            text: "New",
+            tooltip: "Spawn a new guest",
+            onClick: function () { onSpawnGuest(); }
+        }
+    ];
+}
+
+function createDirectTab() {
     var Y_GUEST = VP_BOTTOM + 4;
-    var Y_MODE  = Y_GUEST + 18;
-    var Y_MOVE  = Y_MODE + 18;
+    var Y_GRP   = Y_GUEST + 18;
+    var Y_MOVE  = Y_GRP + 14;
     var Y_ARROWS = Y_MOVE + 24;
     var Y_ARROWS2 = Y_ARROWS + 29;
     var Y_IDLE  = Y_ARROWS2 + 33;
     var Y_ACTION = Y_IDLE + 32;
-    var Y_QADD  = Y_ACTION + 18;
-    var Y_QPLAY = Y_QADD + 18;
+    var GRP_H   = Y_ACTION + 24 - Y_GRP;
+    var TAB_H   = Y_GRP + GRP_H + MARGIN;
 
-    return {
-        image: "guests",
+    var tab = {
+        image: 5577,
         widgets: [
+            {
+                type: "custom",
+                x: MARGIN,
+                y: 50,
+                width: VP_WIDTH,
+                height: VP_HEIGHT,
+                name: "vpDirectBg",
+                onDraw: function (g) {
+                    g.colour = 0;
+                    g.well(0, 0, VP_WIDTH, VP_HEIGHT);
+                }
+            },
             {
                 type: "viewport",
                 x: MARGIN,
                 y: 50,
                 width: VP_WIDTH,
                 height: VP_HEIGHT,
-                name: "vpGuest"
-            },
+                name: "vpDirect"
+            }
+        ].concat(guestWidgets(Y_GUEST)).concat([
             {
-                type: "label",
+                type: "groupbox",
                 x: MARGIN,
-                y: Y_GUEST,
-                width: 50,
-                height: 14,
-                name: "lblGuest",
-                text: "Guest:"
-            },
-            {
-                type: "dropdown",
-                x: 50,
-                y: Y_GUEST - 2,
-                width: 192,
-                height: 14,
-                name: "ddGuest",
-                items: ["(none)"],
-                selectedIndex: 0,
-                onChange: function (index) {
-                    resetState();
-                    clearActions();
-                    var list = getGuestList();
-                    if (index > 0 && index <= list.length) {
-                        selectGuest(list[index - 1].id);
-                        freezeGuest();
-                        syncAccessoriesFromGuest();
-                        refreshActionDropdown();
-                        refreshQueueActionDropdown();
-                    }
-                }
-            },
-            {
-                type: "button",
-                x: 250,
-                y: Y_GUEST - 2,
-                width: 42,
-                height: 14,
-                name: "btnSpawn",
-                text: "New",
-                tooltip: "Spawn a new guest",
-                onClick: function () {
-                    spawnGuest();
-                    freezeGuest();
-                    syncAccessoriesFromGuest();
-                    refreshGuestDropdown();
-                    refreshActionDropdown();
-                    refreshQueueActionDropdown();
-                }
-            },
-            {
-                type: "label",
-                x: MARGIN,
-                y: Y_MODE,
-                width: 50,
-                height: 14,
-                name: "lblMode",
-                text: "Mode:"
-            },
-            {
-                type: "dropdown",
-                x: 50,
-                y: Y_MODE - 2,
-                width: 120,
-                height: 14,
-                name: "ddMode",
-                items: ["Direct Control", "Queued Control"],
-                selectedIndex: 0,
-                onChange: function (index) {
-                    var mode = index === 0 ? "direct" : "queued";
-                    stopDirectionTool();
-                    deactivateMoveTool();
-                    clearActions();
-                    freezeGuest();
-                    if (mode === "queued") {
-                        pauseQueue();
-                    }
-                    setControlMode(mode);
-                    updateDirectWidgets();
-                }
-            },
-            {
-                type: "button",
-                x: MARGIN,
-                y: Y_MOVE,
+                y: Y_GRP,
                 width: WINDOW_WIDTH - MARGIN * 2,
+                height: GRP_H,
+                text: "Direct Control"
+            },
+            {
+                type: "button",
+                x: MARGIN + 8,
+                y: Y_MOVE,
+                width: WINDOW_WIDTH - MARGIN * 2 - 16,
                 height: 20,
                 name: "btnMoveTo",
                 text: "Move To",
@@ -340,9 +388,7 @@ function createControlTab() {
                 height: 29,
                 name: "btnDirNW",
                 image: SPR_DIR_NW,
-                onClick: function () {
-                    startDirectionTool(3);
-                }
+                onClick: function () { startDirectionTool(3); }
             },
             {
                 type: "button",
@@ -352,9 +398,7 @@ function createControlTab() {
                 height: 29,
                 name: "btnDirNE",
                 image: SPR_DIR_NE,
-                onClick: function () {
-                    startDirectionTool(0);
-                }
+                onClick: function () { startDirectionTool(0); }
             },
             {
                 type: "button",
@@ -364,9 +408,7 @@ function createControlTab() {
                 height: 29,
                 name: "btnDirSW",
                 image: SPR_DIR_SW,
-                onClick: function () {
-                    startDirectionTool(2);
-                }
+                onClick: function () { startDirectionTool(2); }
             },
             {
                 type: "button",
@@ -376,9 +418,7 @@ function createControlTab() {
                 height: 29,
                 name: "btnDirSE",
                 image: SPR_DIR_SE,
-                onClick: function () {
-                    startDirectionTool(1);
-                }
+                onClick: function () { startDirectionTool(1); }
             },
             {
                 type: "button",
@@ -405,9 +445,9 @@ function createControlTab() {
             },
             {
                 type: "dropdown",
-                x: MARGIN,
+                x: MARGIN + 8,
                 y: Y_ACTION,
-                width: 220,
+                width: 208,
                 height: 14,
                 name: "ddAction",
                 items: ["(select action)"],
@@ -415,122 +455,37 @@ function createControlTab() {
             },
             {
                 type: "button",
-                x: 230,
+                x: 224,
                 y: Y_ACTION - 1,
-                width: 60,
+                width: 54,
                 height: 16,
                 name: "btnPerform",
                 text: "Perform",
                 tooltip: "Perform the selected action",
-                onClick: function () {
-                    performSelectedAction();
-                }
-            },
-            {
-                type: "dropdown",
-                x: MARGIN,
-                y: Y_QADD,
-                width: 130,
-                height: 14,
-                name: "ddCtrlQueueAction",
-                items: [],
-                selectedIndex: 0
-            },
-            {
-                type: "label",
-                x: 140,
-                y: Y_QADD,
-                width: 20,
-                height: 14,
-                name: "lblCtrlDuration",
-                text: "for"
-            },
-            {
-                type: "spinner",
-                x: 160,
-                y: Y_QADD - 2,
-                width: 55,
-                height: 16,
-                name: "spnCtrlDuration",
-                text: "3s",
-                onDecrement: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var spn = win.findWidget("spnCtrlDuration");
-                    var val = parseInt(spn.text) || 3;
-                    if (val > 1) val--;
-                    spn.text = val + "s";
-                },
-                onIncrement: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var spn = win.findWidget("spnCtrlDuration");
-                    var val = parseInt(spn.text) || 3;
-                    if (val < 60) val++;
-                    spn.text = val + "s";
-                }
-            },
-            {
-                type: "button",
-                x: 220,
-                y: Y_QADD - 2,
-                width: 50,
-                height: 18,
-                name: "btnCtrlAddAction",
-                text: "+ Add",
-                onClick: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var dd = win.findWidget("ddCtrlQueueAction");
-                    var spn = win.findWidget("spnCtrlDuration");
-                    if (!queueActionAnimations.length) return;
-                    var anim = queueActionAnimations[dd.selectedIndex];
-                    var dur = parseInt(spn.text) || 3;
-                    addAction({ type: "action", animation: anim, duration: dur });
-                    refreshQueueList();
-                }
-            },
-            {
-                type: "button",
-                x: 272,
-                y: Y_QADD - 2,
-                width: 28,
-                height: 28,
-                name: "btnCtrlPlayPause",
-                border: false,
-                image: getPauseImage(false),
-                tooltip: "Play/Pause queue",
-                onClick: function () {
-                    if (isQueuePaused()) {
-                        resumeQueue();
-                    } else {
-                        pauseQueue();
-                    }
-                }
+                onClick: function () { performSelectedAction(); }
             }
-        ]
+        ])
     };
+    tab._height = TAB_H;
+    return tab;
 }
 
-function updateDirectWidgets() {
+function updateDirectTab() {
     var win = ui.getWindow(WINDOW_CLASS);
-    if (!win) return;
+    if (!win || win.tabIndex !== 0) return;
 
-    var isDirect = getControlMode() === "direct";
     var guest = getSelectedGuest();
     var hasGuest = !!guest;
 
-    var arrowNames = ["btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE"];
-    for (var i = 0; i < arrowNames.length; i++) {
+    var disableNames = ["btnMoveTo", "btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE", "btnIdle", "ddAction", "btnPerform"];
+    for (var i = 0; i < disableNames.length; i++) {
         try {
-            var btn = win.findWidget(arrowNames[i]);
-            btn.isVisible = isDirect;
+            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
         } catch (e) { }
     }
 
     try {
         var btnIdle = win.findWidget("btnIdle");
-        btnIdle.isVisible = isDirect;
         if (guest) {
             var frozen = guest.getFlag("positionFrozen");
             btnIdle.image = frozen ? getPauseImage(true) : getPauseImage(false);
@@ -541,44 +496,244 @@ function updateDirectWidgets() {
     try {
         var ddAction = win.findWidget("ddAction");
         var btnPerform = win.findWidget("btnPerform");
-        ddAction.isVisible = isDirect;
-        btnPerform.isVisible = isDirect;
         var isIdle = guest && guest.getFlag("positionFrozen");
         ddAction.isDisabled = !hasGuest || !isIdle;
         btnPerform.isDisabled = !hasGuest || !isIdle;
     } catch (e) { }
 
-    var Y_QUEUE_UP = VP_BOTTOM + 68;
-    var Y_QUEUE_PP = Y_QUEUE_UP + 20;
-    var queuedPositions = [
-        { name: "ddCtrlQueueAction", y: Y_QUEUE_UP },
-        { name: "lblCtrlDuration", y: Y_QUEUE_UP },
-        { name: "spnCtrlDuration", y: Y_QUEUE_UP - 2 },
-        { name: "btnCtrlAddAction", y: Y_QUEUE_UP - 2 },
-        { name: "btnCtrlPlayPause", x: 138, y: Y_QUEUE_PP }
-    ];
-    for (var j = 0; j < queuedPositions.length; j++) {
-        try {
-            var w = win.findWidget(queuedPositions[j].name);
-            w.isVisible = !isDirect;
-            w.isDisabled = !hasGuest;
-            if (!isDirect) {
-                w.y = queuedPositions[j].y;
-                if (queuedPositions[j].x !== undefined) w.x = queuedPositions[j].x;
+    updateArrowPressed();
+
+    var vp = win.findWidget("vpDirect");
+    vp.isVisible = hasGuest;
+    if (guest && vp.viewport) {
+        vp.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
+    }
+}
+
+function createQueuedTab() {
+    var Y_GUEST = VP_BOTTOM + 4;
+    var Y_GRP   = Y_GUEST + 18;
+    var Y_PP    = Y_GRP + 14;
+    var Y_LIST  = Y_PP + 32;
+    var LIST_H  = 128;
+    var Y_MOVE  = Y_LIST + LIST_H + 4;
+    var Y_ANIM  = Y_MOVE + 24;
+    var GRP_H   = Y_ANIM + 24 - Y_GRP;
+    var TAB_H   = Y_GRP + GRP_H + MARGIN;
+
+    var tab = {
+        image: { frameBase: 5229, frameCount: 8, frameDuration: 4 },
+        widgets: [
+            {
+                type: "custom",
+                x: MARGIN,
+                y: 50,
+                width: VP_WIDTH,
+                height: VP_HEIGHT,
+                name: "vpQueuedBg",
+                onDraw: function (g) {
+                    g.colour = 0;
+                    g.well(0, 0, VP_WIDTH, VP_HEIGHT);
+                }
+            },
+            {
+                type: "viewport",
+                x: MARGIN,
+                y: 50,
+                width: VP_WIDTH,
+                height: VP_HEIGHT,
+                name: "vpQueued"
             }
+        ].concat(guestWidgets(Y_GUEST)).concat([
+            {
+                type: "groupbox",
+                x: MARGIN,
+                y: Y_GRP,
+                width: WINDOW_WIDTH - MARGIN * 2,
+                height: GRP_H,
+                text: "Queued Control"
+            },
+            {
+                type: "button",
+                x: MARGIN + 8,
+                y: Y_PP,
+                width: 28,
+                height: 28,
+                name: "btnQueuePlayPause",
+                border: false,
+                image: getPauseImage(false),
+                tooltip: "Play/Pause queue",
+                onClick: function () {
+                    if (isQueuePaused()) {
+                        resumeQueue();
+                    } else {
+                        pauseQueue();
+                    }
+                }
+            },
+            {
+                type: "button",
+                x: WINDOW_WIDTH - MARGIN - 8 - 90 - 4 - 90,
+                y: Y_PP,
+                width: 90,
+                height: 28,
+                name: "btnDelete",
+                text: "Delete",
+                onClick: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var lv = win.findWidget("lvQueue");
+                    if (lv.selectedCell && lv.selectedCell.row >= 0) {
+                        removeAction(lv.selectedCell.row);
+                        refreshQueueList();
+                    }
+                }
+            },
+            {
+                type: "button",
+                x: WINDOW_WIDTH - MARGIN - 8 - 90,
+                y: Y_PP,
+                width: 90,
+                height: 28,
+                name: "btnClearAll",
+                text: "Clear All",
+                onClick: function () {
+                    clearActions();
+                    refreshQueueList();
+                }
+            },
+            {
+                type: "listview",
+                x: MARGIN + 8,
+                y: Y_LIST,
+                width: WINDOW_WIDTH - MARGIN * 2 - 16,
+                height: LIST_H,
+                name: "lvQueue",
+                scrollbars: "vertical",
+                isStriped: true,
+                showColumnHeaders: true,
+                columns: [
+                    { header: "#", width: 24 },
+                    { header: "Action", width: 236 }
+                ],
+                items: [],
+                canSelect: true
+            },
+            {
+                type: "button",
+                x: MARGIN + 8,
+                y: Y_MOVE,
+                width: WINDOW_WIDTH - MARGIN * 2 - 16,
+                height: 20,
+                name: "btnQueueMove",
+                text: "+ Move To",
+                onClick: function () {
+                    if (moveToolActive) {
+                        deactivateMoveTool();
+                    } else {
+                        activateMoveTool();
+                    }
+                }
+            },
+            {
+                type: "dropdown",
+                x: MARGIN + 8,
+                y: Y_ANIM,
+                width: 118,
+                height: 14,
+                name: "ddQueueAction",
+                items: [],
+                selectedIndex: 0
+            },
+            {
+                type: "label",
+                x: 140,
+                y: Y_ANIM,
+                width: 20,
+                height: 14,
+                name: "lblDuration",
+                text: "for"
+            },
+            {
+                type: "spinner",
+                x: 160,
+                y: Y_ANIM - 2,
+                width: 55,
+                height: 16,
+                name: "spnDuration",
+                text: "3s",
+                onDecrement: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var spn = win.findWidget("spnDuration");
+                    var val = parseInt(spn.text) || 3;
+                    if (val > 1) val--;
+                    spn.text = val + "s";
+                },
+                onIncrement: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var spn = win.findWidget("spnDuration");
+                    var val = parseInt(spn.text) || 3;
+                    if (val < 60) val++;
+                    spn.text = val + "s";
+                }
+            },
+            {
+                type: "button",
+                x: 220,
+                y: Y_ANIM - 2,
+                width: 60,
+                height: 18,
+                name: "btnAddAction",
+                text: "+ Add",
+                onClick: function () {
+                    var win = ui.getWindow(WINDOW_CLASS);
+                    if (!win) return;
+                    var dd = win.findWidget("ddQueueAction");
+                    var spn = win.findWidget("spnDuration");
+                    if (!queueActionAnimations.length) return;
+                    var anim = queueActionAnimations[dd.selectedIndex];
+                    var dur = parseInt(spn.text) || 3;
+                    addAction({ type: "action", animation: anim, duration: dur });
+                    refreshQueueList();
+                }
+            }
+        ])
+    };
+    tab._height = TAB_H;
+    return tab;
+}
+
+function updateQueuedTab() {
+    var win = ui.getWindow(WINDOW_CLASS);
+    if (!win || win.tabIndex !== 1) return;
+
+    var guest = getSelectedGuest();
+    var hasGuest = !!guest;
+
+    var disableNames = ["btnQueuePlayPause", "btnDelete", "btnClearAll", "btnQueueMove", "ddQueueAction", "spnDuration", "btnAddAction"];
+    for (var i = 0; i < disableNames.length; i++) {
+        try {
+            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
         } catch (e) { }
     }
 
     try {
-        var btnPP = win.findWidget("btnCtrlPlayPause");
+        var btnPP = win.findWidget("btnQueuePlayPause");
         var playing = hasGuest && !isQueuePaused();
         btnPP.image = playing ? getPauseImage(false) : getPauseImage(true);
         btnPP.isPressed = !playing;
     } catch (e) { }
 
-    if (!isDirect) {
-        refreshCtrlQueueActionDropdown();
+    var vp = win.findWidget("vpQueued");
+    vp.isVisible = hasGuest;
+    if (guest && vp.viewport) {
+        vp.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
     }
+
+    refreshQueueActionDropdown();
+    refreshQueueList();
 }
 
 var ACTION_LABELS = {
@@ -614,7 +769,8 @@ function refreshActionDropdown() {
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win) return;
 
-    var dd = win.findWidget("ddAction");
+    var dd;
+    try { dd = win.findWidget("ddAction"); } catch (e) { return; }
     var guest = getSelectedGuest();
     actionAnimations = [];
 
@@ -642,21 +798,35 @@ function refreshActionDropdown() {
     dd.selectedIndex = 0;
 }
 
-var lastCtrlQueueLabels = [];
+var queueActionAnimations = [];
+var lastQueueLabels = [];
 
-function refreshCtrlQueueActionDropdown() {
+function populateQueueAnimations() {
+    var guest = getSelectedGuest();
+    queueActionAnimations = [];
+    if (guest) {
+        var avail = guest.availableAnimations || [];
+        for (var i = 0; i < avail.length; i++) {
+            if (ACTION_EXCLUDE.indexOf(avail[i]) === -1) {
+                queueActionAnimations.push(avail[i]);
+            }
+        }
+    }
+}
+
+function refreshQueueActionDropdown() {
     populateQueueAnimations();
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win) return;
     var dd;
-    try { dd = win.findWidget("ddCtrlQueueAction"); } catch (e) { return; }
+    try { dd = win.findWidget("ddQueueAction"); } catch (e) { return; }
     var labels = [];
     for (var j = 0; j < queueActionAnimations.length; j++) {
         labels.push(ACTION_LABELS[queueActionAnimations[j]] || queueActionAnimations[j]);
     }
     var newItems = labels.length > 0 ? labels : ["(none)"];
-    if (newItems.join(",") !== lastCtrlQueueLabels.join(",")) {
-        lastCtrlQueueLabels = newItems;
+    if (newItems.join(",") !== lastQueueLabels.join(",")) {
+        lastQueueLabels = newItems;
         dd.items = newItems;
         if (labels.length > 0) dd.selectedIndex = 0;
     }
@@ -698,7 +868,6 @@ function performSelectedAction() {
             return;
         }
         var offset = g.animationOffset;
-        // Offset going backwards means the animation looped
         if (prevOffset >= 0 && offset < prevOffset) {
             g.animation = "watchRide";
             g.animationOffset = 0;
@@ -713,7 +882,8 @@ function performSelectedAction() {
 function refreshGuestDropdown() {
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win) return;
-    var dd = win.findWidget("ddGuest");
+    var dd;
+    try { dd = win.findWidget("ddGuest"); } catch (e) { return; }
     var list = getGuestList();
     var items = ["(none)"];
     var selectedIndex = 0;
@@ -726,39 +896,6 @@ function refreshGuestDropdown() {
     }
     dd.items = items;
     dd.selectedIndex = selectedIndex;
-}
-
-function updateControlTab() {
-    var win = ui.getWindow(WINDOW_CLASS);
-    if (!win || win.tabIndex !== 0) return;
-
-    var guest = getSelectedGuest();
-    var hasGuest = !!guest;
-
-    var ddMode = win.findWidget("ddMode");
-    var modeIndex = getControlMode() === "direct" ? 0 : 1;
-    if (ddMode.selectedIndex !== modeIndex) {
-        ddMode.selectedIndex = modeIndex;
-    }
-    ddMode.isDisabled = !hasGuest;
-
-    var disableNames = ["btnMoveTo", "btnDirNW", "btnDirNE", "btnDirSW", "btnDirSE", "btnIdle", "ddAction", "btnPerform"];
-    for (var i = 0; i < disableNames.length; i++) {
-        try {
-            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
-        } catch (e) { }
-    }
-
-    updateDirectWidgets();
-
-    updateArrowPressed();
-
-    if (guest) {
-        var vp = win.findWidget("vpGuest");
-        if (vp && vp.viewport) {
-            vp.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
-        }
-    }
 }
 
 function activateMoveTool() {
@@ -816,11 +953,27 @@ function updateMoveButtonPressed() {
 var ACCESSORY_LABELS = ["None", "Hat", "Sunglasses", "Balloon", "Umbrella"];
 
 function createAppearanceTab() {
-    var Y0 = VP_BOTTOM + 4;
+    var Y_GUEST = VP_BOTTOM + 4;
+    var Y_GRP = Y_GUEST + 18;
+    var Y0 = Y_GRP + 14;
+    var GRP_H = Y0 + 56 - Y_GRP;
+    var TAB_H = Y_GRP + GRP_H + MARGIN;
 
-    return {
+    var tab = {
         image: { frameBase: 5221, frameCount: 8, frameDuration: 4 },
         widgets: [
+            {
+                type: "custom",
+                x: MARGIN,
+                y: 50,
+                width: VP_WIDTH,
+                height: VP_HEIGHT,
+                name: "vpPreviewBg",
+                onDraw: function (g) {
+                    g.colour = 0;
+                    g.well(0, 0, VP_WIDTH, VP_HEIGHT);
+                }
+            },
             {
                 type: "viewport",
                 x: MARGIN,
@@ -828,10 +981,19 @@ function createAppearanceTab() {
                 width: VP_WIDTH,
                 height: VP_HEIGHT,
                 name: "vpPreview"
+            }
+        ].concat(guestWidgets(Y_GUEST)).concat([
+            {
+                type: "groupbox",
+                x: MARGIN,
+                y: Y_GRP,
+                width: WINDOW_WIDTH - MARGIN * 2,
+                height: GRP_H,
+                text: "Appearance"
             },
             {
                 type: "label",
-                x: MARGIN,
+                x: MARGIN + 8,
                 y: Y0,
                 width: 80,
                 height: 14,
@@ -853,7 +1015,7 @@ function createAppearanceTab() {
             },
             {
                 type: "label",
-                x: MARGIN,
+                x: MARGIN + 8,
                 y: Y0 + 18,
                 width: 80,
                 height: 14,
@@ -875,7 +1037,7 @@ function createAppearanceTab() {
             },
             {
                 type: "label",
-                x: MARGIN,
+                x: MARGIN + 8,
                 y: Y0 + 36,
                 width: 80,
                 height: 14,
@@ -918,13 +1080,15 @@ function createAppearanceTab() {
                     setAccessoryColour(colour);
                 }
             }
-        ]
+        ])
     };
+    tab._height = TAB_H;
+    return tab;
 }
 
 function updateAppearanceTab() {
     var win = ui.getWindow(WINDOW_CLASS);
-    if (!win || win.tabIndex !== 1) return;
+    if (!win || win.tabIndex !== 2) return;
 
     var guest = getSelectedGuest();
     var hasGuest = !!guest;
@@ -936,10 +1100,12 @@ function updateAppearanceTab() {
         } catch (e) { }
     }
 
+    win.findWidget("vpPreview").isVisible = hasGuest;
+
     if (!guest) return;
 
     var vpPreview = win.findWidget("vpPreview");
-    if (vpPreview && vpPreview.viewport) {
+    if (vpPreview.viewport) {
         vpPreview.viewport.moveTo({ x: guest.x, y: guest.y, z: guest.z });
     }
 
@@ -959,219 +1125,11 @@ function updateAppearanceTab() {
     }
 }
 
-var queueActionAnimations = [];
-
-function populateQueueAnimations() {
-    var guest = getSelectedGuest();
-    queueActionAnimations = [];
-    if (guest) {
-        var avail = guest.availableAnimations || [];
-        for (var i = 0; i < avail.length; i++) {
-            if (ACTION_EXCLUDE.indexOf(avail[i]) === -1) {
-                queueActionAnimations.push(avail[i]);
-            }
-        }
-    }
-}
-
-function refreshQueueActionDropdown() {
-    populateQueueAnimations();
-    var win = ui.getWindow(WINDOW_CLASS);
-    if (!win) return;
-    var dd = win.findWidget("ddQueueAction");
-    if (dd) {
-        var labels = [];
-        for (var j = 0; j < queueActionAnimations.length; j++) {
-            labels.push(ACTION_LABELS[queueActionAnimations[j]] || queueActionAnimations[j]);
-        }
-        dd.items = labels;
-        if (labels.length > 0) dd.selectedIndex = 0;
-    }
-}
-
-function createQueueTab() {
-    return {
-        image: "path_railings",
-        widgets: [
-            {
-                type: "button",
-                x: MARGIN,
-                y: 50,
-                width: 28,
-                height: 28,
-                name: "btnQueuePlayPause",
-                border: false,
-                image: getPauseImage(false),
-                tooltip: "Play/Pause queue",
-                onClick: function () {
-                    if (isQueuePaused()) {
-                        resumeQueue();
-                    } else {
-                        pauseQueue();
-                    }
-                }
-            },
-            {
-                type: "listview",
-                x: MARGIN,
-                y: 78,
-                width: WINDOW_WIDTH - MARGIN * 2,
-                height: 240,
-                name: "lvQueue",
-                scrollbars: "vertical",
-                isStriped: true,
-                showColumnHeaders: true,
-                columns: [
-                    { header: "#", width: 24 },
-                    { header: "Action", width: 240 }
-                ],
-                items: [],
-                canSelect: true
-            },
-            {
-                type: "button",
-                x: MARGIN,
-                y: 322,
-                width: 90,
-                height: 20,
-                name: "btnDelete",
-                text: "Delete",
-                onClick: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var lv = win.findWidget("lvQueue");
-                    if (lv.selectedCell && lv.selectedCell.row >= 0) {
-                        removeAction(lv.selectedCell.row);
-                        refreshQueueList();
-                    }
-                }
-            },
-            {
-                type: "button",
-                x: 100,
-                y: 322,
-                width: 90,
-                height: 20,
-                name: "btnClearAll",
-                text: "Clear All",
-                onClick: function () {
-                    clearActions();
-                    refreshQueueList();
-                }
-            },
-            {
-                type: "button",
-                x: MARGIN,
-                y: 346,
-                width: WINDOW_WIDTH - MARGIN * 2,
-                height: 20,
-                name: "btnQueueMove",
-                text: "+ Move To",
-                onClick: function () {
-                    if (moveToolActive) {
-                        deactivateMoveTool();
-                    } else {
-                        activateMoveTool();
-                    }
-                }
-            },
-            {
-                type: "dropdown",
-                x: MARGIN,
-                y: 370,
-                width: 130,
-                height: 14,
-                name: "ddQueueAction",
-                items: [],
-                selectedIndex: 0
-            },
-            {
-                type: "label",
-                x: 140,
-                y: 370,
-                width: 20,
-                height: 14,
-                name: "lblDuration",
-                text: "for"
-            },
-            {
-                type: "spinner",
-                x: 160,
-                y: 368,
-                width: 55,
-                height: 16,
-                name: "spnDuration",
-                text: "3s",
-                onDecrement: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var spn = win.findWidget("spnDuration");
-                    var val = parseInt(spn.text) || 3;
-                    if (val > 1) val--;
-                    spn.text = val + "s";
-                },
-                onIncrement: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var spn = win.findWidget("spnDuration");
-                    var val = parseInt(spn.text) || 3;
-                    if (val < 60) val++;
-                    spn.text = val + "s";
-                }
-            },
-            {
-                type: "button",
-                x: 220,
-                y: 368,
-                width: 60,
-                height: 18,
-                name: "btnAddAction",
-                text: "+ Add",
-                onClick: function () {
-                    var win = ui.getWindow(WINDOW_CLASS);
-                    if (!win) return;
-                    var dd = win.findWidget("ddQueueAction");
-                    var spn = win.findWidget("spnDuration");
-                    if (!queueActionAnimations.length) return;
-                    var anim = queueActionAnimations[dd.selectedIndex];
-                    var dur = parseInt(spn.text) || 3;
-                    addAction({ type: "action", animation: anim, duration: dur });
-                    refreshQueueList();
-                }
-            }
-        ]
-    };
-}
-
-function updateQueueTab() {
-    var win = ui.getWindow(WINDOW_CLASS);
-    if (!win || win.tabIndex !== 2) return;
-
-    var guest = getSelectedGuest();
-    var hasGuest = !!guest;
-
-    var disableNames = ["btnQueuePlayPause", "btnDelete", "btnClearAll", "btnQueueMove", "ddQueueAction", "spnDuration", "btnAddAction"];
-    for (var i = 0; i < disableNames.length; i++) {
-        try {
-            win.findWidget(disableNames[i]).isDisabled = !hasGuest;
-        } catch (e) { }
-    }
-
-    try {
-        var btnPP = win.findWidget("btnQueuePlayPause");
-        var playing = hasGuest && !isQueuePaused();
-        btnPP.image = playing ? getPauseImage(false) : getPauseImage(true);
-        btnPP.isPressed = !playing;
-    } catch (e) { }
-
-    refreshQueueActionDropdown();
-    refreshQueueList();
-}
-
 function refreshQueueList() {
     var win = ui.getWindow(WINDOW_CLASS);
     if (!win) return;
-    var lv = win.findWidget("lvQueue");
+    var lv;
+    try { lv = win.findWidget("lvQueue"); } catch (e) { return; }
     var actions = getActions();
     var items = [];
     for (var i = 0; i < actions.length; i++) {
