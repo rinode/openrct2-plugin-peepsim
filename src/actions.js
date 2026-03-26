@@ -45,10 +45,7 @@ function hasWork() {
 
 function pauseQueue() {
     queuePaused = true;
-    var guest = getSelectedGuest();
-    if (guest && currentAction) {
-        freezeGuest();
-    }
+    freezeGuest();
 }
 
 function resumeQueue() {
@@ -172,6 +169,7 @@ function finishCurrentAction() {
 
     if (actionQueue.length === 0 && isAiDisabled()) {
         freezeGuest();
+        queuePaused = true;
     }
 }
 
