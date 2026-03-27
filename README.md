@@ -59,10 +59,10 @@ The window has three tabs, each with a live viewport that follows the selected g
 ## Development
 
 Source files are in `src/`:
-- `index.js` — Entry point, registers the plugin
-- `window.js` — Window layout and per-tab update logic
-- `guest.js` — Guest state and accessory management
-- `actions.js` — Action queue and tick executor
+- `index.js`: Entry point, registers the plugin
+- `window.js`: Window layout and per-tab update logic
+- `guest.js`: Guest state and accessory management
+- `actions.js`: Action queue and tick executor
 
 Plugin name and version are read from `package.json`.
 
