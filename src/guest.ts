@@ -5,7 +5,10 @@ import {
     COLOUR_ACCESSORIES,
     ACTION_EXCLUDE,
     ACTION_LABELS,
-    GuestEntry
+    GuestEntry,
+    GuestState,
+    createGuestState,
+    guestStates
 } from "./model";
 
 export function getSelectedGuest(model: PeepSimModel): Guest | null {
@@ -20,6 +23,98 @@ export function getSelectedGuest(model: PeepSimModel): Guest | null {
     return entity as Guest;
 }
 
+export function getGuestById(id: number): Guest | null {
+    const entity = map.getEntity(id);
+    if (!entity || entity.type !== "guest") return null;
+    return entity as Guest;
+}
+
+// ── State swap ─────────────────────────────────────────────────────────
+
+/**
+ * Release a direct-mode guest when the UI detaches (close window / switch guest).
+ * Unfreezes the guest entity and removes it from global state.
+ */
+export function releaseDirectGuest(model: PeepSimModel): void {
+    var id = model.selectedGuestId.get();
+    if (id === null) return;
+    if (model.selectedMode.get() !== 1) return;
+
+    var entity = map.getEntity(id);
+    if (entity && entity.type === "guest") {
+        unfreezeGuestEntity(entity as Guest);
+    }
+    delete guestStates[id];
+}
+
+export function saveCurrentGuestState(model: PeepSimModel): void {
+    const id = model.selectedGuestId.get();
+    if (id === null) return;
+
+    const modeIndex = model.selectedMode.get();
+    // Direct mode is UI-only — release instead of saving
+    if (modeIndex === 1) {
+        releaseDirectGuest(model);
+        return;
+    }
+
+    var mode: "uncontrolled" | "direct" | "queued" = "uncontrolled";
+    if (modeIndex === 2) mode = "queued";
+
+    var gs = guestStates[id];
+    if (!gs) {
+        gs = createGuestState();
+        guestStates[id] = gs;
+    }
+
+    gs.mode = mode;
+    gs.actionQueue = model.actionQueue.get().slice();
+    gs.currentAction = model.currentAction;
+    gs.queuePaused = model.queuePaused.get();
+    gs.queueExecutingIndex = model.queueExecutingIndex.get();
+    gs.keepSteps = model.keepSteps.get();
+    gs.loopQueue = model.loopQueue.get();
+    gs.heldDirection = model.heldDirection.get();
+    gs.moveTickCount = model.moveTickCount;
+    gs.lastMoveDist = model.lastMoveDist;
+    gs.actionTickCount = model.actionTickCount;
+}
+
+export function loadGuestState(model: PeepSimModel, guestId: number): void {
+    var gs = guestStates[guestId];
+    if (!gs) {
+        gs = createGuestState();
+        guestStates[guestId] = gs;
+    }
+
+    var modeIndex = 0;
+    if (gs.mode === "direct") modeIndex = 1;
+    else if (gs.mode === "queued") modeIndex = 2;
+
+    model.selectedMode.set(modeIndex);
+    model.actionQueue.set(gs.actionQueue.slice());
+    model.currentAction = gs.currentAction;
+    model.queuePaused.set(gs.queuePaused);
+    model.queueExecutingIndex.set(gs.queueExecutingIndex);
+    model.keepSteps.set(gs.keepSteps);
+    model.loopQueue.set(gs.loopQueue);
+    model.heldDirection.set(gs.heldDirection);
+    model.moveTickCount = gs.moveTickCount;
+    model.lastMoveDist = gs.lastMoveDist;
+    model.actionTickCount = gs.actionTickCount;
+}
+
+export function ensureGuestState(model: PeepSimModel, guestId: number): GuestState {
+    var gs = guestStates[guestId];
+    if (!gs) {
+        gs = createGuestState();
+        guestStates[guestId] = gs;
+    }
+    return gs;
+}
+
+// ── Guest selection ────────────────────────────────────────────────────
+
 export function selectGuest(model: PeepSimModel, id: number): void {
     model.selectedGuestId.set(id);
     model.guestTarget.set(id);
@@ -33,6 +128,10 @@ export function spawnGuest(model: PeepSimModel): Guest | null {
         model.selectedGuestId.set(guest.id);
         model.guestTarget.set(guest.id);
         context.executeAction("guestsetname", { peep: guest.id, name: "PeepSim" }, () => {});
+        var gs = createGuestState();
+        gs.mode = "direct";
+        guestStates[guest.id] = gs;
+        model.selectedMode.set(1);
     }
     return guest;
 }
@@ -56,23 +155,45 @@ export function refreshGuestList(model: PeepSimModel): void {
     model.isRefreshing = false;
 }
 
+// ── Find guest ─────────────────────────────────────────────────────────
+
+export function findGuest(model: PeepSimModel): void {
+    const guest = getSelectedGuest(model);
+    if (!guest) return;
+    ui.mainViewport.scrollTo({ x: guest.x, y: guest.y });
+}
+
+// ── Freeze / unfreeze ──────────────────────────────────────────────────
+
+export function freezeGuestEntity(guest: Guest): void {
+    guest.setFlag("positionFrozen", true);
+    guest.animation = "watchRide";
+    guest.animationOffset = 0;
+}
+
+export function unfreezeGuestEntity(guest: Guest): void {
+    guest.setFlag("positionFrozen", false);
+    guest.animation = "walking";
+    guest.animationOffset = 0;
+}
+
 export function freezeGuest(model: PeepSimModel): void {
     const guest = getSelectedGuest(model);
     if (guest) {
-        guest.setFlag("positionFrozen", true);
-        guest.animation = "watchRide";
-        guest.animationOffset = 0;
+        freezeGuestEntity(guest);
     }
+    model.guestFrozen.set(true);
 }
 
 export function unfreezeGuest(model: PeepSimModel): void {
     const guest = getSelectedGuest(model);
     if (guest) {
-        guest.setFlag("positionFrozen", false);
-        guest.animation = "walking";
-        guest.animationOffset = 0;
+        unfreezeGuestEntity(guest);
     }
+    model.guestFrozen.set(false);
 }
+
+// ── Accessories ────────────────────────────────────────────────────────
 
 export function setAccessory(model: PeepSimModel, type: AccessoryType | null): void {
     const prev = model.accessoryActive.get();
@@ -92,7 +213,9 @@ export function setAccessory(model: PeepSimModel, type: AccessoryType | null): v
         }
     }
 
-    freezeGuest(model);
+    if (model.selectedMode.get() !== 0) {
+        freezeGuest(model);
+    }
 }
 
 export function setAccessoryColour(model: PeepSimModel, colour: number): void {
@@ -155,6 +278,8 @@ export function syncAppearanceFromGuest(model: PeepSimModel): void {
     syncAccessoriesFromGuest(model);
 }
 
+// ── Action animations ──────────────────────────────────────────────────
+
 export function refreshActionAnimations(model: PeepSimModel): void {
     const guest = getSelectedGuest(model);
     if (!guest) {
@@ -183,16 +308,26 @@ export function refreshActionAnimations(model: PeepSimModel): void {
     model.selectedQueueActionIndex.set(0);
 }
 
+// ── Reset ──────────────────────────────────────────────────────────────
+
 export function resetState(model: PeepSimModel): void {
-    const guest = getSelectedGuest(model);
-    if (guest) {
-        guest.setFlag("positionFrozen", false);
-        guest.animation = "walking";
-        guest.animationOffset = 0;
-    }
     model.selectedGuestId.set(null);
     model.guestTarget.set(null);
+    model.selectedGuestIndex.set(0);
+    model.guestList.set([]);
+    model.selectedMode.set(0);
     model.accessoryActive.set(null);
     model.accessoryColour.set(0);
     model.accessoryIndex.set(0);
+    model.actionQueue.set([]);
+    model.queueListItems.set([]);
+    model.queuePaused.set(true);
+    model.queueExecutingIndex.set(-1);
+    model.keepSteps.set(false);
+    model.loopQueue.set(false);
+    model.heldDirection.set(-1);
+    model.currentAction = null;
+    model.moveTickCount = 0;
+    model.lastMoveDist = -1;
+    model.actionTickCount = 0;
 }

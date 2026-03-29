@@ -3,6 +3,7 @@ import { store, compute, WritableStore, Store } from "openrct2-flexui";
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type AccessoryType = "hat" | "sunglasses" | "balloon" | "umbrella";
+export type GuestMode = "uncontrolled" | "direct" | "queued";
 
 export interface QueuedAction {
     type: "move" | "action";
@@ -16,9 +17,41 @@ export interface GuestEntry {
     name: string;
 }
 
+export interface GuestState {
+    mode: GuestMode;
+    actionQueue: QueuedAction[];
+    currentAction: QueuedAction | null;
+    queuePaused: boolean;
+    queueExecutingIndex: number;
+    keepSteps: boolean;
+    loopQueue: boolean;
+    heldDirection: number;
+    moveTickCount: number;
+    lastMoveDist: number;
+    actionTickCount: number;
+}
+
+export function createGuestState(): GuestState {
+    return {
+        mode: "uncontrolled",
+        actionQueue: [],
+        currentAction: null,
+        queuePaused: true,
+        queueExecutingIndex: -1,
+        keepSteps: false,
+        loopQueue: false,
+        heldDirection: -1,
+        moveTickCount: 0,
+        lastMoveDist: -1,
+        actionTickCount: 0
+    };
+}
+
 export const ACCESSORY_TYPES: (AccessoryType | null)[] = [null, "hat", "sunglasses", "balloon", "umbrella"];
 export const COLOUR_ACCESSORIES: Record<string, boolean> = { hat: true, balloon: true, umbrella: true };
 export const DEFAULT_COLOURS: Record<string, number> = { hat: 6, balloon: 14, umbrella: 0 };
+
+export const MODE_LABELS = ["Uncontrolled", "Direct", "Queued"];
 
 export const ACTION_LABELS: Record<string, string> = {
     jump: "Jump",
@@ -47,19 +80,29 @@ export const ACTION_EXCLUDE = [
     "hanging", "drowning"
 ];
 
+// ── Global guest state (singleton, survives window close) ──────────────
+
+export var guestStates: { [id: number]: GuestState } = {};
+
+export function resetGuestStates(): void {
+    var keys = Object.keys(guestStates);
+    for (var i = 0; i < keys.length; i++) {
+        delete guestStates[parseInt(keys[i], 10)];
+    }
+}
+
 // ── ViewModel ──────────────────────────────────────────────────────────
 
 export class PeepSimModel {
-    // Guest state
+
+    // Guest selection
     readonly selectedGuestId: WritableStore<number | null> = store<number | null>(null);
     readonly guestList: WritableStore<GuestEntry[]> = store<GuestEntry[]>([]);
     readonly selectedGuestIndex: WritableStore<number> = store(0);
-
-    // Computed: the actual guest entity (re-derived each update)
     readonly guestTarget: WritableStore<number | null> = store<number | null>(null);
 
-    // Control mode
-    readonly controlMode: WritableStore<"direct" | "queued"> = store<"direct" | "queued">("direct");
+    // Mode for current guest (0=uncontrolled, 1=direct, 2=queued)
+    readonly selectedMode: WritableStore<number> = store(0);
 
     // Direct control
     readonly heldDirection: WritableStore<number> = store(-1);
@@ -70,7 +113,13 @@ export class PeepSimModel {
     readonly queuePaused: WritableStore<boolean> = store(true);
     readonly actionQueue: WritableStore<QueuedAction[]> = store<QueuedAction[]>([]);
     readonly queueListItems: WritableStore<string[][]> = store<string[][]>([]);
-    readonly queueSelectedRow: WritableStore<number> = store(-1);
+    readonly queueSelectedCell: WritableStore<{ row: number; column: number } | null> = store<{ row: number; column: number } | null>(null);
+    readonly keepSteps: WritableStore<boolean> = store(false);
+    readonly loopQueue: WritableStore<boolean> = store(false);
+    readonly queueExecutingIndex: WritableStore<number> = store(-1);
+
+    // Picker tool
+    readonly pickerActive: WritableStore<boolean> = store(false);
 
     // Appearance
     readonly accessoryActive: WritableStore<AccessoryType | null> = store<AccessoryType | null>(null);
@@ -92,10 +141,8 @@ export class PeepSimModel {
     readonly hasGuest: Store<boolean> = compute(this.selectedGuestId, id => id !== null);
     readonly noGuest: Store<boolean> = compute(this.selectedGuestId, id => id === null);
 
-    // Internals (not stores — runtime state for tick executor)
+    // Internals
     isRefreshing = false;
-    tabSwitching = false;
-    tickInterval: number | null = null;
     directionInterval: number | null = null;
     actionPlayInterval: number | null = null;
     currentAction: QueuedAction | null = null;
@@ -103,7 +150,4 @@ export class PeepSimModel {
     lastMoveDist = -1;
     actionTickCount = 0;
     guestRefreshCounter = 0;
-    pauseSlotNormal = -1;
-    pauseSlotPressed = -1;
-    lastTabIndex = -1;
 }

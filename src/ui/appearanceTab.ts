@@ -1,23 +1,16 @@
 import {
-    box, colourPicker, dropdown, groupbox, horizontal, label,
-    viewport, WidgetCreator, FlexiblePosition
+    colourPicker, compute, dropdown, groupbox, horizontal, label,
+    WidgetCreator, FlexiblePosition, ElementVisibility
 } from "openrct2-flexui";
 import { PeepSimModel, ACCESSORY_TYPES, COLOUR_ACCESSORIES, DEFAULT_COLOURS } from "../model";
 import { getSelectedGuest, setAccessory, setAccessoryColour } from "../guest";
-import { guestSelector } from "./guestSelector";
+import { peepSelector } from "./peepSelector";
 
 const ACCESSORY_LABELS = ["None", "Hat", "Sunglasses", "Balloon", "Umbrella"];
 
 export function appearanceTab(model: PeepSimModel): WidgetCreator<FlexiblePosition>[] {
     return [
-        box({
-            text: "Preview",
-            height: "160px",
-            content: viewport({
-                target: model.guestTarget
-            })
-        }),
-        guestSelector(model),
+        peepSelector(model),
         groupbox({
             text: "Appearance",
             content: [
@@ -70,6 +63,10 @@ export function appearanceTab(model: PeepSimModel): WidgetCreator<FlexiblePositi
                     }),
                     colourPicker({
                         colour: model.accessoryColour,
+                        visibility: compute(model.accessoryIndex, idx => {
+                            const type = ACCESSORY_TYPES[idx];
+                            return (type && COLOUR_ACCESSORIES[type] ? "visible" : "hidden") as ElementVisibility;
+                        }),
                         disabled: model.noGuest,
                         onChange: (colour: number) => {
                             setAccessoryColour(model, colour);

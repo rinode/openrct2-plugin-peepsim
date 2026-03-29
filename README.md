@@ -1,40 +1,59 @@
 # PeepSim - OpenRCT2 Plugin
 
-A guest simulator plugin for OpenRCT2. Select or spawn a guest, walk them around, change their look, and queue up sequences of moves and animations.
+A guest simulator plugin for OpenRCT2. Select or spawn guests, control them directly or via queued action sequences, customise their appearance, and save state per park.
 
 ## Features
 
-The window has three tabs, each with a live viewport that follows the selected guest.
+The window has two tabs — **Control** and **Appearance** — each with a shared "Peep" panel showing a live viewport, guest/mode selectors, and quick-action buttons.
+
+### Multi-Guest State
+
+- Manage multiple guests simultaneously, each with their own control mode and queue
+- Per-guest state is tracked independently and swapped when switching between guests
+- Three control modes per guest:
+  - **Uncontrolled** — guest walks freely under AI control, no state retained
+  - **Direct Control** (dc) — manual movement and actions, guest is frozen/idle by default
+  - **Queued Control** (qc) — build and play back sequences of moves and timed animations
+- Guest dropdown shows mode suffix: `(dc)` for direct, `(qc)` for queued
+- State persists to the park save file via `context.getParkStorage()`
+
+### Peep Panel
+
+- Live viewport following the selected guest
+- Guest picker tool (eyedropper) — click any guest in the park to select them
+- Locate button — scroll the main viewport to the selected guest
+- Spawn button — create a new guest in direct control mode
+- Guest dropdown and mode selector
 
 ### Direct Control
 
-![Direct Control tab](peepsim-tab1.png)
-
-- Select any guest from a dropdown, or spawn a new one
-- Guest list refreshes automatically
 - Move To: click a tile on the map to walk the guest there
-- Directional arrows: walk NE/SE/SW/NW continuously, adjusted for camera rotation
+- Directional arrows: walk NE/SE/SW/NW continuously
 - Idle toggle: freeze/unfreeze the guest in place
 - Action dropdown: pick an animation and perform it while idle
 
 ### Queued Control
 
-![Queued Control tab](peepsim-tab2.png)
-
 - Build a queue of moves and timed animations that run sequentially
-- Play/Pause toggle for the queue (auto-pauses when finished)
+- Play/Pause toggle with status indicator in the action list (▶ playing, || paused)
+- Auto-delete: optionally remove completed actions from the list
+- Loop: repeat the queue from the beginning (requires auto-delete off)
 - Delete individual actions or clear the entire queue
 - Add move targets with "+ Move To" or timed animations with "+ Add"
 - Stuck detection for move actions
 
 ### Appearance
 
-![Appearance tab](peepsim-tab3.png)
-
 - Shirt and pants colour pickers
 - Accessory dropdown: None, Hat, Sunglasses, Balloon, or Umbrella (one at a time)
-- Colour picker for accessories that support it (hat, balloon, umbrella)
-- Accessories persist while the window is open
+- Colour picker for colourable accessories (hat, balloon, umbrella)
+- Changing accessories in uncontrolled mode does not freeze the guest
+
+### Save & Load
+
+- Plugin state (all guest modes and queues) is saved into the park file
+- Automatically saves on park save and window close
+- Automatically loads when the window opens
 
 ## Requirements
 
@@ -45,11 +64,9 @@ The window has three tabs, each with a live viewport that follows the selected g
 
 1. Clone the repository
 2. Run `npm install`
-3. Set the `OPENRCT2_PLUGIN_PATH` environment variable to your OpenRCT2 plugin directory:
-   - Windows: `C:/Users/<YourUsername>/Documents/OpenRCT2/plugin`
-   - macOS: `~/Library/Application Support/OpenRCT2/plugin`
-   - Linux: `~/.config/OpenRCT2/plugin`
-4. Run `npm run develop` to build and output directly to your plugin folder (with watch mode)
+3. Run `npm run develop` to build and output directly to your plugin folder (with watch mode)
+
+The build output path is configured in `rollup.config.js`.
 
 ## Build Commands
 
@@ -58,21 +75,26 @@ The window has three tabs, each with a live viewport that follows the selected g
 
 ## Development
 
-Source files are in `src/`:
-- `index.js`: Entry point, registers the plugin
-- `window.js`: Window layout and per-tab update logic
-- `guest.js`: Guest state and accessory management
-- `actions.js`: Action queue and tick executor
+Source files are in `src/`, written in TypeScript (ES5 target for Duktape compatibility):
 
-Plugin name and version are read from `package.json`.
+- `index.ts` — Entry point, registers the plugin
+- `model.ts` — Central ViewModel with reactive stores and types
+- `guest.ts` — Guest selection, state swap, freeze/unfreeze, accessories
+- `actions.ts` — Movement, queue execution, tools, mode transitions
+- `storage.ts` — Park storage persistence (save/load)
+- `ui/window.ts` — Two-tab window layout and lifecycle
+- `ui/peepSelector.ts` — Shared Peep panel (viewport, buttons, dropdowns)
+- `ui/controlTab.ts` — Direct and queued control sections
+- `ui/appearanceTab.ts` — Appearance controls
+- `ui/pauseButton.ts` — Custom clipped pause/play sprite rendering
 
 ## Releases
 
 Releases are automated via GitHub Actions. Push a version tag to trigger a build:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ## License

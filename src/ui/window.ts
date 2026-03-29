@@ -1,17 +1,18 @@
 import { Colour, tab, tabwindow, WindowTemplate } from "openrct2-flexui";
 import { PeepSimModel } from "../model";
 import {
-    refreshGuestList, enforceAccessories, resetState,
-    syncAppearanceFromGuest, refreshActionAnimations
+    refreshGuestList, enforceAccessories,
+    syncAppearanceFromGuest, refreshActionAnimations,
+    saveCurrentGuestState, loadGuestState, resetState
 } from "../guest";
 import {
-    startExecutor, stopExecutor, clearActions, clearHighlight,
-    stopDirectionWalk, deactivateMoveTool, pauseQueue
+    stopDirectionWalk, deactivateMoveTool, deactivatePickerTool,
+    refreshQueueList, syncFromGlobalState, setUIModel
 } from "../actions";
 import { initPauseSprites } from "./pauseButton";
-import { directTab } from "./directTab";
-import { queuedTab } from "./queuedTab";
+import { controlTab } from "./controlTab";
 import { appearanceTab } from "./appearanceTab";
+import { savePluginState } from "../storage";
 
 const GUEST_REFRESH_INTERVAL = 80;
 
@@ -24,13 +25,15 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
         padding: 5,
         colours: [Colour.Grey, Colour.OliveGreen, Colour.OliveGreen],
         onOpen: () => {
-            startExecutor(model);
-            model.lastTabIndex = 0;
+            setUIModel(model);
             model.guestRefreshCounter = 0;
+            resetState(model);
             refreshGuestList(model);
         },
         onUpdate: () => {
             enforceAccessories(model);
+            // Sync executor changes → UI for selected guest
+            syncFromGlobalState(model);
             model.guestRefreshCounter++;
             if (model.guestRefreshCounter >= GUEST_REFRESH_INTERVAL) {
                 model.guestRefreshCounter = 0;
@@ -40,6 +43,7 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
         },
         onClose: () => {
             stopDirectionWalk(model);
+            deactivatePickerTool(model);
             if (model.actionPlayInterval !== null) {
                 context.clearInterval(model.actionPlayInterval);
                 model.actionPlayInterval = null;
@@ -47,51 +51,26 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
             if (ui.tool) {
                 ui.tool.cancel();
             }
-            stopExecutor(model);
-            clearActions(model);
-            clearHighlight();
+            // Save UI state back to global guestStates, then reset
+            saveCurrentGuestState(model);
+            savePluginState();
             resetState(model);
+            setUIModel(null);
         },
-        onTabChange: (tabIndex: number) => {
-            const prev = model.lastTabIndex;
-            if (tabIndex !== prev) {
-                stopDirectionWalk(model);
-                deactivateMoveTool(model);
-                if (prev === 0 && tabIndex === 1) {
-                    clearActions(model);
-                    pauseQueue(model);
-                } else if (prev === 1 && tabIndex === 0) {
-                    clearActions(model);
-                    pauseQueue(model);
-                }
-                model.lastTabIndex = tabIndex;
-                if (tabIndex === 0) {
-                    model.controlMode.set("direct");
-                } else if (tabIndex === 1) {
-                    model.controlMode.set("queued");
-                }
-            }
+        onTabChange: () => {
             refreshGuestList(model);
             refreshActionAnimations(model);
-            model.tabSwitching = false;
+            refreshQueueList(model);
         },
         tabs: [
             tab({
                 image: 5577,
                 height: "auto",
-                onClose: () => { model.tabSwitching = true; },
-                content: directTab(model)
-            }),
-            tab({
-                image: { frameBase: 5229, frameCount: 8, frameDuration: 4 },
-                height: "auto",
-                onClose: () => { model.tabSwitching = true; },
-                content: queuedTab(model)
+                content: controlTab(model)
             }),
             tab({
                 image: { frameBase: 5221, frameCount: 8, frameDuration: 4 },
                 height: "auto",
-                onClose: () => { model.tabSwitching = true; },
                 content: appearanceTab(model)
             })
         ]
