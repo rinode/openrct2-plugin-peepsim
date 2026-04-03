@@ -4,12 +4,12 @@ import {
     WidgetCreator, FlexiblePosition, ElementVisibility
 } from "openrct2-flexui";
 import { PeepSimModel } from "../model";
+import { guestStates, projectToUI } from "../state";
 import { getSelectedGuest, freezeGuest, unfreezeGuest } from "../guest";
 import {
     startDirectionWalk, stopDirectionWalk, activateMoveTool,
     deactivateMoveTool, deactivatePickerTool, performSelectedAction,
-    addAction, removeAction, clearActions, pauseQueue, resumeQueue,
-    refreshQueueList, syncSettingToGlobal
+    addAction, removeAction, clearActions, pauseQueue, resumeQueue
 } from "../actions";
 import { peepSelector } from "./peepSelector";
 import { getPauseImage } from "./pauseButton";
@@ -170,13 +170,11 @@ export function controlTab(model: PeepSimModel): WidgetCreator<FlexiblePosition>
                         isPressed: model.queuePaused,
                         visibility: vis2,
                         onChange: (pressed: boolean) => {
-                            if (model.isRefreshing) return;
                             if (pressed) {
                                 pauseQueue(model);
                             } else {
                                 resumeQueue(model);
                             }
-                            refreshQueueList(model);
                         }
                     }),
                     vertical({
@@ -189,12 +187,14 @@ export function controlTab(model: PeepSimModel): WidgetCreator<FlexiblePosition>
                                 isChecked: compute(model.keepSteps, k => !k),
                                 visibility: vis2,
                                 onChange: (checked: boolean) => {
-                                    if (model.isRefreshing) return;
-                                    model.keepSteps.set(!checked);
-                                    if (checked) {
-                                        model.loopQueue.set(false);
+                                    var id = model.selectedGuestId.get();
+                                    if (id !== null && guestStates[id]) {
+                                        guestStates[id].keepSteps = !checked;
+                                        if (checked) {
+                                            guestStates[id].loopQueue = false;
+                                        }
                                     }
-                                    syncSettingToGlobal(model);
+                                    projectToUI(model);
                                 }
                             }),
                             checkbox({
@@ -203,9 +203,11 @@ export function controlTab(model: PeepSimModel): WidgetCreator<FlexiblePosition>
                                 isChecked: twoway(model.loopQueue),
                                 disabled: compute(model.keepSteps, k => !k),
                                 visibility: vis2,
-                                onChange: () => {
-                                    if (model.isRefreshing) return;
-                                    syncSettingToGlobal(model);
+                                onChange: (checked: boolean) => {
+                                    var id = model.selectedGuestId.get();
+                                    if (id !== null && guestStates[id]) {
+                                        guestStates[id].loopQueue = checked;
+                                    }
                                 }
                             })
                         ]

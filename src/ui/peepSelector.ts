@@ -2,15 +2,15 @@ import {
     button, compute, dropdown, groupbox, horizontal, toggle, twoway, vertical, viewport,
     WidgetCreator, FlexiblePosition
 } from "openrct2-flexui";
-import { PeepSimModel, MODE_LABELS, guestStates } from "../model";
+import { PeepSimModel, MODE_LABELS } from "../model";
+import { guestStates, ensureGuestState } from "../state";
 import {
     selectGuest, spawnGuest, refreshGuestList, freezeGuest,
-    syncAccessoriesFromGuest, resetState, saveCurrentGuestState,
-    loadGuestState, findGuest
+    syncAccessoriesFromGuest, releaseDirectGuest, resetState, findGuest
 } from "../guest";
 import {
     stopDirectionWalk, deactivateMoveTool, deactivatePickerTool,
-    activatePickerTool, handleModeChange, refreshQueueList
+    activatePickerTool, handleModeChange
 } from "../actions";
 
 export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePosition> {
@@ -55,7 +55,7 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                             height: "24px",
                             tooltip: "Spawn a new guest",
                             onClick: () => {
-                                saveCurrentGuestState(model);
+                                releaseDirectGuest(model);
                                 stopDirectionWalk(model);
                                 deactivateMoveTool(model);
                                 spawnGuest(model);
@@ -86,16 +86,14 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                     }),
                     selectedIndex: twoway(model.selectedGuestIndex),
                     onChange: function (index: number) {
-                        if (model.isRefreshing) return;
                         var list = model.guestList.get();
                         var newId = (index > 0 && index <= list.length) ? list[index - 1].id : null;
-                        saveCurrentGuestState(model);
+                        releaseDirectGuest(model);
                         stopDirectionWalk(model);
                         deactivateMoveTool(model);
                         if (newId !== null) {
+                            ensureGuestState(newId);
                             selectGuest(model, newId);
-                            loadGuestState(model, newId);
-                            refreshQueueList(model);
                         } else {
                             resetState(model);
                         }
@@ -107,7 +105,6 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                     selectedIndex: model.selectedMode,
                     disabled: model.noGuest,
                     onChange: function (index: number) {
-                        if (model.isRefreshing) return;
                         handleModeChange(model, index);
                     }
                 })

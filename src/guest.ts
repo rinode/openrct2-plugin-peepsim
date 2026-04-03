@@ -6,10 +6,9 @@ import {
     ACTION_EXCLUDE,
     ACTION_LABELS,
     GuestEntry,
-    GuestState,
-    createGuestState,
-    guestStates
+    createGuestState
 } from "./model";
+import { guestStates, ensureGuestState, projectToUI } from "./state";
 
 export function getSelectedGuest(model: PeepSimModel): Guest | null {
     const id = model.selectedGuestId.get();
@@ -47,77 +46,12 @@ export function releaseDirectGuest(model: PeepSimModel): void {
     delete guestStates[id];
 }
 
-export function saveCurrentGuestState(model: PeepSimModel): void {
-    const id = model.selectedGuestId.get();
-    if (id === null) return;
-
-    const modeIndex = model.selectedMode.get();
-    // Direct mode is UI-only — release instead of saving
-    if (modeIndex === 1) {
-        releaseDirectGuest(model);
-        return;
-    }
-
-    var mode: "uncontrolled" | "direct" | "queued" = "uncontrolled";
-    if (modeIndex === 2) mode = "queued";
-
-    var gs = guestStates[id];
-    if (!gs) {
-        gs = createGuestState();
-        guestStates[id] = gs;
-    }
-
-    gs.mode = mode;
-    gs.actionQueue = model.actionQueue.get().slice();
-    gs.currentAction = model.currentAction;
-    gs.queuePaused = model.queuePaused.get();
-    gs.queueExecutingIndex = model.queueExecutingIndex.get();
-    gs.keepSteps = model.keepSteps.get();
-    gs.loopQueue = model.loopQueue.get();
-    gs.heldDirection = model.heldDirection.get();
-    gs.moveTickCount = model.moveTickCount;
-    gs.lastMoveDist = model.lastMoveDist;
-    gs.actionTickCount = model.actionTickCount;
-}
-
-export function loadGuestState(model: PeepSimModel, guestId: number): void {
-    var gs = guestStates[guestId];
-    if (!gs) {
-        gs = createGuestState();
-        guestStates[guestId] = gs;
-    }
-
-    var modeIndex = 0;
-    if (gs.mode === "direct") modeIndex = 1;
-    else if (gs.mode === "queued") modeIndex = 2;
-
-    model.selectedMode.set(modeIndex);
-    model.actionQueue.set(gs.actionQueue.slice());
-    model.currentAction = gs.currentAction;
-    model.queuePaused.set(gs.queuePaused);
-    model.queueExecutingIndex.set(gs.queueExecutingIndex);
-    model.keepSteps.set(gs.keepSteps);
-    model.loopQueue.set(gs.loopQueue);
-    model.heldDirection.set(gs.heldDirection);
-    model.moveTickCount = gs.moveTickCount;
-    model.lastMoveDist = gs.lastMoveDist;
-    model.actionTickCount = gs.actionTickCount;
-}
-
-export function ensureGuestState(model: PeepSimModel, guestId: number): GuestState {
-    var gs = guestStates[guestId];
-    if (!gs) {
-        gs = createGuestState();
-        guestStates[guestId] = gs;
-    }
-    return gs;
-}
-
 // ── Guest selection ────────────────────────────────────────────────────
 
 export function selectGuest(model: PeepSimModel, id: number): void {
     model.selectedGuestId.set(id);
     model.guestTarget.set(id);
+    projectToUI(model);
     syncAccessoriesFromGuest(model);
     refreshActionAnimations(model);
 }
@@ -128,31 +62,31 @@ export function spawnGuest(model: PeepSimModel): Guest | null {
         model.selectedGuestId.set(guest.id);
         model.guestTarget.set(guest.id);
         context.executeAction("guestsetname", { peep: guest.id, name: "PeepSim" }, () => {});
-        var gs = createGuestState();
+        var gs = ensureGuestState(guest.id);
         gs.mode = "direct";
-        guestStates[guest.id] = gs;
-        model.selectedMode.set(1);
+        projectToUI(model);
     }
     return guest;
 }
 
 export function refreshGuestList(model: PeepSimModel): void {
-    const list: GuestEntry[] = map.getAllEntities("guest")
-        .filter(g => g.id !== null)
-        .map(g => ({
-            id: g.id as number,
-            name: (g as Guest).name
-        }));
+    var ids = Object.keys(guestStates);
+    var list: GuestEntry[] = [];
+    for (var i = 0; i < ids.length; i++) {
+        var id = parseInt(ids[i], 10);
+        if (isNaN(id)) continue;
+        var entity = map.getEntity(id);
+        if (!entity || entity.type !== "guest") continue;
+        list.push({ id: id, name: (entity as Guest).name });
+    }
 
     const currentId = model.selectedGuestId.get();
     const newIdx = (currentId !== null)
         ? (list.findIndex(g => g.id === currentId) + 1) || 0
         : 0;
 
-    model.isRefreshing = true;
     model.guestList.set(list);
     model.selectedGuestIndex.set(newIdx);
-    model.isRefreshing = false;
 }
 
 // ── Find guest ─────────────────────────────────────────────────────────
@@ -315,19 +249,9 @@ export function resetState(model: PeepSimModel): void {
     model.guestTarget.set(null);
     model.selectedGuestIndex.set(0);
     model.guestList.set([]);
-    model.selectedMode.set(0);
     model.accessoryActive.set(null);
     model.accessoryColour.set(0);
     model.accessoryIndex.set(0);
-    model.actionQueue.set([]);
-    model.queueListItems.set([]);
-    model.queuePaused.set(true);
-    model.queueExecutingIndex.set(-1);
-    model.keepSteps.set(false);
-    model.loopQueue.set(false);
-    model.heldDirection.set(-1);
-    model.currentAction = null;
-    model.moveTickCount = 0;
-    model.lastMoveDist = -1;
-    model.actionTickCount = 0;
+    model.queueSelectedCell.set(null);
+    projectToUI(model);
 }

@@ -1,112 +1,81 @@
-import { PeepSimModel, QueuedAction, ACTION_LABELS, GuestState, guestStates } from "./model";
+import { PeepSimModel, QueuedAction, ACTION_LABELS, GuestState } from "./model";
+import { guestStates, ensureGuestState, removeGuestState, markProjectionDirty, projectToUI } from "./state";
 import {
     getSelectedGuest, getGuestById, freezeGuest, unfreezeGuest,
     freezeGuestEntity, unfreezeGuestEntity,
-    saveCurrentGuestState, selectGuest, loadGuestState, refreshGuestList,
-    ensureGuestState
+    releaseDirectGuest, selectGuest, refreshGuestList
 } from "./guest";
 
 // ── Queue manipulation ─────────────────────────────────────────────────
 
 export function addAction(model: PeepSimModel, action: QueuedAction): void {
-    const queue = model.actionQueue.get().slice();
-    queue.push(action);
-    model.actionQueue.set(queue);
-    // Sync to global state
     const id = model.selectedGuestId.get();
-    if (id !== null && guestStates[id]) {
-        guestStates[id].actionQueue = queue.slice();
-    }
-    refreshQueueList(model);
+    if (id === null) return;
+    var gs = guestStates[id];
+    if (!gs) return;
+    gs.actionQueue = gs.actionQueue.slice();
+    gs.actionQueue.push(action);
+    projectToUI(model);
 }
 
 export function removeAction(model: PeepSimModel, index: number): void {
-    const queue = model.actionQueue.get().slice();
-    queue.splice(index, 1);
-    model.actionQueue.set(queue);
+    const id = model.selectedGuestId.get();
+    if (id === null) return;
+    var gs = guestStates[id];
+    if (!gs) return;
+
+    gs.actionQueue = gs.actionQueue.slice();
+    gs.actionQueue.splice(index, 1);
 
     // Adjust executing index if needed
-    const execIdx = model.queueExecutingIndex.get();
-    if (execIdx >= 0) {
-        if (index < execIdx) {
-            model.queueExecutingIndex.set(execIdx - 1);
-        } else if (index === execIdx) {
-            model.queueExecutingIndex.set(-1);
-            model.currentAction = null;
+    if (gs.queueExecutingIndex >= 0) {
+        if (index < gs.queueExecutingIndex) {
+            gs.queueExecutingIndex--;
+        } else if (index === gs.queueExecutingIndex) {
+            gs.queueExecutingIndex = -1;
+            gs.currentAction = null;
         }
     }
-    // Sync to global state
-    const id = model.selectedGuestId.get();
-    if (id !== null && guestStates[id]) {
-        guestStates[id].actionQueue = queue.slice();
-        guestStates[id].queueExecutingIndex = model.queueExecutingIndex.get();
-        guestStates[id].currentAction = model.currentAction;
-    }
-    refreshQueueList(model);
+    projectToUI(model);
 }
 
 export function clearActions(model: PeepSimModel): void {
-    model.actionQueue.set([]);
-    model.currentAction = null;
-    model.actionTickCount = 0;
-    model.queueExecutingIndex.set(-1);
-    model.queueSelectedCell.set(null);
-    // Sync to global state
     const id = model.selectedGuestId.get();
     if (id !== null && guestStates[id]) {
-        guestStates[id].actionQueue = [];
-        guestStates[id].currentAction = null;
-        guestStates[id].actionTickCount = 0;
-        guestStates[id].queueExecutingIndex = -1;
+        var gs = guestStates[id];
+        gs.actionQueue = [];
+        gs.currentAction = null;
+        gs.actionTickCount = 0;
+        gs.queueExecutingIndex = -1;
     }
-    refreshQueueList(model);
-}
-
-export function refreshQueueList(model: PeepSimModel): void {
-    const actions = model.actionQueue.get();
-    const execIdx = model.queueExecutingIndex.get();
-    const paused = model.queuePaused.get();
-    const items: string[][] = actions.map((a, i) => {
-        let desc: string;
-        if (a.type === "action") {
-            const label = ACTION_LABELS[a.animation!] || a.animation!;
-            desc = `${label} (${a.duration || 3}s)`;
-        } else {
-            desc = `Move \u2192 ${a.target!.x}, ${a.target!.y}`;
-        }
-        var status = "";
-        if (i === execIdx) {
-            status = paused ? "||" : "\u25B6";
-        }
-        return [status, String(i + 1), desc];
-    });
-    model.queueListItems.set(items);
+    model.queueSelectedCell.set(null);
+    projectToUI(model);
 }
 
 // ── Queue play/pause ───────────────────────────────────────────────────
 
 export function pauseQueue(model: PeepSimModel): void {
-    model.queuePaused.set(true);
     const id = model.selectedGuestId.get();
     if (id !== null && guestStates[id]) {
         guestStates[id].queuePaused = true;
     }
+    projectToUI(model);
     freezeGuest(model);
 }
 
 export function resumeQueue(model: PeepSimModel): void {
-    model.queuePaused.set(false);
     const id = model.selectedGuestId.get();
     var gs = (id !== null) ? guestStates[id] : undefined;
     if (gs) {
         gs.queuePaused = false;
     }
+    projectToUI(model);
 
     const guest = getSelectedGuest(model);
     if (!guest) return;
 
     // Re-initiate the current action on the entity
-    var current = gs ? gs.currentAction : model.currentAction;
+    var current = gs ? gs.currentAction : null;
     if (current && current.type === "move" && current.target) {
         unfreezeGuest(model);
         guest.destination = {
@@ -124,11 +93,6 @@ export function resumeQueue(model: PeepSimModel): void {
 export function directMove(model: PeepSimModel, tileX: number, tileY: number): void {
     const guest = getSelectedGuest(model);
     if (!guest) return;
-
-    model.actionQueue.set([]);
-    model.currentAction = { type: "move", target: { x: tileX, y: tileY } };
-    model.moveTickCount = 0;
-    model.lastMoveDist = -1;
 
     unfreezeGuest(model);
     guest.destination = {
@@ -160,9 +124,6 @@ export function directWalk(model: PeepSimModel, direction: number): void {
         x: guest.x + dx * 32,
         y: guest.y + dy * 32
     };
-
-    model.actionQueue.set([]);
-    model.currentAction = null;
 }
 
 // ── Global Executor ────────────────────────────────────────────────────
@@ -298,13 +259,6 @@ function executeGuestTick(id: number, gs: GuestState): void {
     }
 }
 
-var uiModel: PeepSimModel | null = null;
-
-/** Register the UI model so the executor can sync state directly to stores. */
-export function setUIModel(model: PeepSimModel | null): void {
-    uiModel = model;
-}
-
 function globalExecuteTick(): void {
     var ids = Object.keys(guestStates);
     for (var i = 0; i < ids.length; i++) {
@@ -317,66 +271,8 @@ function globalExecuteTick(): void {
         executeGuestTick(id, gs);
     }
 
-    // Sync selected guest's state → UI stores (atomic, same call frame)
-    if (uiModel !== null) {
-        var selId = uiModel.selectedGuestId.get();
-        if (selId !== null) {
-            var selGs = guestStates[selId];
-            if (selGs && selGs.mode === "queued") {
-                syncGuestToUI(uiModel, selGs);
-            }
-        }
-    }
-}
-
-/** One-way sync: guestStates → UI stores. Only sets stores when values differ. */
-function syncGuestToUI(model: PeepSimModel, gs: GuestState): void {
-    var changed = false;
-    model.isRefreshing = true;
-
-    if (model.queuePaused.get() !== gs.queuePaused) {
-        model.queuePaused.set(gs.queuePaused);
-        changed = true;
-    }
-    if (model.queueExecutingIndex.get() !== gs.queueExecutingIndex) {
-        model.queueExecutingIndex.set(gs.queueExecutingIndex);
-        changed = true;
-    }
-    if (model.currentAction !== gs.currentAction) {
-        model.currentAction = gs.currentAction;
-        changed = true;
-    }
-    // Compare queue by length — executor either slices (shrinks) or leaves it
-    var mq = model.actionQueue.get();
-    if (mq.length !== gs.actionQueue.length) {
-        model.actionQueue.set(gs.actionQueue.slice());
-        changed = true;
-    }
-
-    if (changed) {
-        refreshQueueList(model);
-    }
-
-    model.isRefreshing = false;
-}
-
-/** Sync global guestStates → UI model for the selected guest (call from onUpdate). */
-export function syncFromGlobalState(model: PeepSimModel): void {
-    var id = model.selectedGuestId.get();
-    if (id === null) return;
-    var gs = guestStates[id];
-    if (!gs || gs.mode !== "queued") return;
-    syncGuestToUI(model, gs);
-}
-
-/** Sync a single field from UI model → global guestStates for the selected guest. */
-export function syncSettingToGlobal(model: PeepSimModel): void {
-    var id = model.selectedGuestId.get();
-    if (id === null) return;
-    var gs = guestStates[id];
-    if (!gs) return;
-    gs.keepSteps = model.keepSteps.get();
-    gs.loopQueue = model.loopQueue.get();
+    // Signal that state may have changed (picked up by projectIfDirty in onUpdate)
+    markProjectionDirty();
 }
 
 // ── Direction walking ──────────────────────────────────────────────────
@@ -471,19 +367,15 @@ export function activatePickerTool(model: PeepSimModel): void {
             const entity = map.getEntity(e.entityId);
             if (!entity || entity.type !== "guest") return;
 
-            // Save current guest state before switching
-            saveCurrentGuestState(model);
+            // Release direct-mode guest before switching
+            releaseDirectGuest(model);
             stopDirectionWalk(model);
             deactivateMoveTool(model);
 
-            // Ensure the picked guest has a state entry
-            ensureGuestState(model, e.entityId);
-
-            // Select and load
+            // Ensure the picked guest has a state entry, then select
+            ensureGuestState(e.entityId);
             selectGuest(model, e.entityId);
-            loadGuestState(model, e.entityId);
             refreshGuestList(model);
-            refreshQueueList(model);
         },
         onFinish: () => {
             model.pickerActive.set(false);
@@ -559,39 +451,33 @@ export function handleModeChange(model: PeepSimModel, newModeIndex: number): voi
         deactivateMoveTool(model);
     }
 
-    model.isRefreshing = true;
-    model.selectedMode.set(newModeIndex);
-    model.isRefreshing = false;
-
     const id = model.selectedGuestId.get();
 
     // Enter new mode
     if (newModeIndex === 0) {
         // Uncontrolled — dispose all state, let AI take over
         unfreezeGuest(model);
-        clearActions(model);
-        model.heldDirection.set(-1);
         if (id !== null) {
-            delete guestStates[id];
+            clearActions(model);
+            removeGuestState(id);
         }
     } else if (newModeIndex === 1) {
         // Direct — activate idle state
         freezeGuest(model);
         if (id !== null) {
-            var gs = ensureGuestState(model, id);
+            var gs = ensureGuestState(id);
             gs.mode = "direct";
         }
     } else if (newModeIndex === 2) {
         // Queued — activate paused queue state
         freezeGuest(model);
-        model.queuePaused.set(true);
         if (id !== null) {
-            var gs = ensureGuestState(model, id);
+            var gs = ensureGuestState(id);
             gs.mode = "queued";
             gs.queuePaused = true;
         }
     }
 
-    // Refresh guest list to update mode labels in dropdown
+    projectToUI(model);
     refreshGuestList(model);
 }

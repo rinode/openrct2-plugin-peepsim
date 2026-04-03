@@ -249,14 +249,6 @@
         "sittingLookAroundLeft", "sittingLookAroundRight",
         "hanging", "drowning"
     ];
-    // ── Global guest state (singleton, survives window close) ──────────────
-    var guestStates = {};
-    function resetGuestStates() {
-        var keys = Object.keys(guestStates);
-        for (var i = 0; i < keys.length; i++) {
-            delete guestStates[parseInt(keys[i], 10)];
-        }
-    }
     // ── ViewModel ──────────────────────────────────────────────────────────
     var PeepSimModel = /** @class */ (function () {
         function PeepSimModel() {
@@ -298,18 +290,128 @@
             // Has-guest computed
             this.hasGuest = i$4(this.selectedGuestId, function (id) { return id !== null; });
             this.noGuest = i$4(this.selectedGuestId, function (id) { return id === null; });
-            // Internals
-            this.isRefreshing = false;
+            // UI-only timer handles
             this.directionInterval = null;
             this.actionPlayInterval = null;
-            this.currentAction = null;
-            this.moveTickCount = 0;
-            this.lastMoveDist = -1;
-            this.actionTickCount = 0;
             this.guestRefreshCounter = 0;
         }
         return PeepSimModel;
     }());
+
+    // ── Centralized guest state (single source of truth) ──────────────────
+    var guestStates = {};
+    function ensureGuestState(id) {
+        var gs = guestStates[id];
+        if (!gs) {
+            gs = createGuestState();
+            guestStates[id] = gs;
+        }
+        return gs;
+    }
+    function removeGuestState(id) {
+        delete guestStates[id];
+    }
+    function resetAllGuestStates() {
+        var keys = Object.keys(guestStates);
+        for (var i = 0; i < keys.length; i++) {
+            delete guestStates[parseInt(keys[i], 10)];
+        }
+    }
+    // ── Dirty flag for executor → UI projection ───────────────────────────
+    var _projectionDirty = false;
+    function markProjectionDirty() {
+        _projectionDirty = true;
+    }
+    /** Called from onUpdate — cheap no-op most ticks. */
+    function projectIfDirty(model) {
+        if (!_projectionDirty)
+            return;
+        _projectionDirty = false;
+        projectToUI(model);
+    }
+    // ── One-way projection: guestStates → UI stores ──────────────────────
+    function modeToIndex(mode) {
+        if (mode === "direct")
+            return 1;
+        if (mode === "queued")
+            return 2;
+        return 0;
+    }
+    /** Project the selected guest's state onto UI stores. Called by commands
+     *  (immediate feedback) and by projectIfDirty (executor-driven changes). */
+    function projectToUI(model) {
+        _projectionDirty = false;
+        var id = model.selectedGuestId.get();
+        if (id === null) {
+            projectToUIDefaults(model);
+            return;
+        }
+        var gs = guestStates[id];
+        if (!gs) {
+            projectToUIDefaults(model);
+            return;
+        }
+        // Primitives — FlexUI's .set() no-ops on equal values
+        model.selectedMode.set(modeToIndex(gs.mode));
+        model.keepSteps.set(gs.keepSteps);
+        model.loopQueue.set(gs.loopQueue);
+        model.heldDirection.set(gs.heldDirection);
+        // Track whether display-list-relevant fields changed
+        var listDirty = false;
+        if (model.queuePaused.get() !== gs.queuePaused) {
+            model.queuePaused.set(gs.queuePaused);
+            listDirty = true;
+        }
+        if (model.queueExecutingIndex.get() !== gs.queueExecutingIndex) {
+            model.queueExecutingIndex.set(gs.queueExecutingIndex);
+            listDirty = true;
+        }
+        // Array — only clone when queue length changed
+        var storeQueue = model.actionQueue.get();
+        if (storeQueue.length !== gs.actionQueue.length) {
+            model.actionQueue.set(gs.actionQueue.slice());
+            listDirty = true;
+        }
+        // Rebuild display list when any list-visible field changed
+        if (listDirty) {
+            refreshQueueListFromState(model, gs);
+        }
+    }
+    /** Clear stores to defaults (no guest selected / deselect). */
+    function projectToUIDefaults(model) {
+        model.selectedMode.set(0);
+        model.actionQueue.set([]);
+        model.queuePaused.set(true);
+        model.queueExecutingIndex.set(-1);
+        model.keepSteps.set(false);
+        model.loopQueue.set(false);
+        model.heldDirection.set(-1);
+        model.queueListItems.set([]);
+    }
+    /** Build the queue display list from a GuestState (moved from actions.ts refreshQueueList). */
+    function refreshQueueListFromState(model, gs) {
+        var actions = gs.actionQueue;
+        var execIdx = gs.queueExecutingIndex;
+        var paused = gs.queuePaused;
+        var items = [];
+        for (var i = 0; i < actions.length; i++) {
+            var a = actions[i];
+            var desc;
+            if (a.type === "action") {
+                var label = ACTION_LABELS[a.animation] || a.animation;
+                desc = label + " (" + (a.duration || 3) + "s)";
+            }
+            else {
+                desc = "Move \u2192 " + a.target.x + ", " + a.target.y;
+            }
+            var status = "";
+            if (i === execIdx) {
+                status = paused ? "||" : "\u25B6";
+            }
+            items.push([status, String(i + 1), desc]);
+        }
+        model.queueListItems.set(items);
+    }
 
     function getSelectedGuest(model) {
         var id = model.selectedGuestId.get();
@@ -340,71 +442,11 @@
         }
         delete guestStates[id];
     }
-    function saveCurrentGuestState(model) {
-        var id = model.selectedGuestId.get();
-        if (id === null)
-            return;
-        var modeIndex = model.selectedMode.get();
-        // Direct mode is UI-only — release instead of saving
-        if (modeIndex === 1) {
-            releaseDirectGuest(model);
-            return;
-        }
-        var mode = "uncontrolled";
-        if (modeIndex === 2)
-            mode = "queued";
-        var gs = guestStates[id];
-        if (!gs) {
-            gs = createGuestState();
-            guestStates[id] = gs;
-        }
-        gs.mode = mode;
-        gs.actionQueue = model.actionQueue.get().slice();
-        gs.currentAction = model.currentAction;
-        gs.queuePaused = model.queuePaused.get();
-        gs.queueExecutingIndex = model.queueExecutingIndex.get();
-        gs.keepSteps = model.keepSteps.get();
-        gs.loopQueue = model.loopQueue.get();
-        gs.heldDirection = model.heldDirection.get();
-        gs.moveTickCount = model.moveTickCount;
-        gs.lastMoveDist = model.lastMoveDist;
-        gs.actionTickCount = model.actionTickCount;
-    }
-    function loadGuestState(model, guestId) {
-        var gs = guestStates[guestId];
-        if (!gs) {
-            gs = createGuestState();
-            guestStates[guestId] = gs;
-        }
-        var modeIndex = 0;
-        if (gs.mode === "direct")
-            modeIndex = 1;
-        else if (gs.mode === "queued")
-            modeIndex = 2;
-        model.selectedMode.set(modeIndex);
-        model.actionQueue.set(gs.actionQueue.slice());
-        model.currentAction = gs.currentAction;
-        model.queuePaused.set(gs.queuePaused);
-        model.queueExecutingIndex.set(gs.queueExecutingIndex);
-        model.keepSteps.set(gs.keepSteps);
-        model.loopQueue.set(gs.loopQueue);
-        model.heldDirection.set(gs.heldDirection);
-        model.moveTickCount = gs.moveTickCount;
-        model.lastMoveDist = gs.lastMoveDist;
-        model.actionTickCount = gs.actionTickCount;
-    }
-    function ensureGuestState(model, guestId) {
-        var gs = guestStates[guestId];
-        if (!gs) {
-            gs = createGuestState();
-            guestStates[guestId] = gs;
-        }
-        return gs;
-    }
     // ── Guest selection ────────────────────────────────────────────────────
     function selectGuest(model, id) {
         model.selectedGuestId.set(id);
         model.guestTarget.set(id);
+        projectToUI(model);
         syncAccessoriesFromGuest(model);
         refreshActionAnimations(model);
     }
@@ -414,28 +456,30 @@
             model.selectedGuestId.set(guest.id);
             model.guestTarget.set(guest.id);
             context.executeAction("guestsetname", { peep: guest.id, name: "PeepSim" }, function () { });
-            var gs = createGuestState();
+            var gs = ensureGuestState(guest.id);
             gs.mode = "direct";
-            guestStates[guest.id] = gs;
-            model.selectedMode.set(1);
+            projectToUI(model);
         }
         return guest;
     }
     function refreshGuestList(model) {
-        var list = map.getAllEntities("guest")
-            .filter(function (g) { return g.id !== null; })
-            .map(function (g) { return ({
-            id: g.id,
-            name: g.name
-        }); });
+        var ids = Object.keys(guestStates);
+        var list = [];
+        for (var i = 0; i < ids.length; i++) {
+            var id = parseInt(ids[i], 10);
+            if (isNaN(id))
+                continue;
+            var entity = map.getEntity(id);
+            if (!entity || entity.type !== "guest")
+                continue;
+            list.push({ id: id, name: entity.name });
+        }
         var currentId = model.selectedGuestId.get();
         var newIdx = (currentId !== null)
             ? (list.findIndex(function (g) { return g.id === currentId; }) + 1) || 0
             : 0;
-        model.isRefreshing = true;
         model.guestList.set(list);
         model.selectedGuestIndex.set(newIdx);
-        model.isRefreshing = false;
     }
     // ── Find guest ─────────────────────────────────────────────────────────
     function findGuest(model) {
@@ -584,117 +628,79 @@
         model.guestTarget.set(null);
         model.selectedGuestIndex.set(0);
         model.guestList.set([]);
-        model.selectedMode.set(0);
         model.accessoryActive.set(null);
         model.accessoryColour.set(0);
         model.accessoryIndex.set(0);
-        model.actionQueue.set([]);
-        model.queueListItems.set([]);
-        model.queuePaused.set(true);
-        model.queueExecutingIndex.set(-1);
-        model.keepSteps.set(false);
-        model.loopQueue.set(false);
-        model.heldDirection.set(-1);
-        model.currentAction = null;
-        model.moveTickCount = 0;
-        model.lastMoveDist = -1;
-        model.actionTickCount = 0;
+        model.queueSelectedCell.set(null);
+        projectToUI(model);
     }
 
     // ── Queue manipulation ─────────────────────────────────────────────────
     function addAction(model, action) {
-        var queue = model.actionQueue.get().slice();
-        queue.push(action);
-        model.actionQueue.set(queue);
-        // Sync to global state
         var id = model.selectedGuestId.get();
-        if (id !== null && guestStates[id]) {
-            guestStates[id].actionQueue = queue.slice();
-        }
-        refreshQueueList(model);
+        if (id === null)
+            return;
+        var gs = guestStates[id];
+        if (!gs)
+            return;
+        gs.actionQueue = gs.actionQueue.slice();
+        gs.actionQueue.push(action);
+        projectToUI(model);
     }
     function removeAction(model, index) {
-        var queue = model.actionQueue.get().slice();
-        queue.splice(index, 1);
-        model.actionQueue.set(queue);
-        // Adjust executing index if needed
-        var execIdx = model.queueExecutingIndex.get();
-        if (execIdx >= 0) {
-            if (index < execIdx) {
-                model.queueExecutingIndex.set(execIdx - 1);
-            }
-            else if (index === execIdx) {
-                model.queueExecutingIndex.set(-1);
-                model.currentAction = null;
-            }
-        }
-        // Sync to global state
         var id = model.selectedGuestId.get();
-        if (id !== null && guestStates[id]) {
-            guestStates[id].actionQueue = queue.slice();
-            guestStates[id].queueExecutingIndex = model.queueExecutingIndex.get();
-            guestStates[id].currentAction = model.currentAction;
+        if (id === null)
+            return;
+        var gs = guestStates[id];
+        if (!gs)
+            return;
+        gs.actionQueue = gs.actionQueue.slice();
+        gs.actionQueue.splice(index, 1);
+        // Adjust executing index if needed
+        if (gs.queueExecutingIndex >= 0) {
+            if (index < gs.queueExecutingIndex) {
+                gs.queueExecutingIndex--;
+            }
+            else if (index === gs.queueExecutingIndex) {
+                gs.queueExecutingIndex = -1;
+                gs.currentAction = null;
+            }
         }
-        refreshQueueList(model);
+        projectToUI(model);
     }
     function clearActions(model) {
-        model.actionQueue.set([]);
-        model.currentAction = null;
-        model.actionTickCount = 0;
-        model.queueExecutingIndex.set(-1);
-        model.queueSelectedCell.set(null);
-        // Sync to global state
         var id = model.selectedGuestId.get();
         if (id !== null && guestStates[id]) {
-            guestStates[id].actionQueue = [];
-            guestStates[id].currentAction = null;
-            guestStates[id].actionTickCount = 0;
-            guestStates[id].queueExecutingIndex = -1;
+            var gs = guestStates[id];
+            gs.actionQueue = [];
+            gs.currentAction = null;
+            gs.actionTickCount = 0;
+            gs.queueExecutingIndex = -1;
         }
-        refreshQueueList(model);
-    }
-    function refreshQueueList(model) {
-        var actions = model.actionQueue.get();
-        var execIdx = model.queueExecutingIndex.get();
-        var paused = model.queuePaused.get();
-        var items = actions.map(function (a, i) {
-            var desc;
-            if (a.type === "action") {
-                var label = ACTION_LABELS[a.animation] || a.animation;
-                desc = "".concat(label, " (").concat(a.duration || 3, "s)");
-            }
-            else {
-                desc = "Move \u2192 ".concat(a.target.x, ", ").concat(a.target.y);
-            }
-            var status = "";
-            if (i === execIdx) {
-                status = paused ? "||" : "\u25B6";
-            }
-            return [status, String(i + 1), desc];
-        });
-        model.queueListItems.set(items);
+        model.queueSelectedCell.set(null);
+        projectToUI(model);
     }
     // ── Queue play/pause ───────────────────────────────────────────────────
     function pauseQueue(model) {
-        model.queuePaused.set(true);
         var id = model.selectedGuestId.get();
         if (id !== null && guestStates[id]) {
             guestStates[id].queuePaused = true;
         }
+        projectToUI(model);
         freezeGuest(model);
     }
     function resumeQueue(model) {
-        model.queuePaused.set(false);
         var id = model.selectedGuestId.get();
         var gs = (id !== null) ? guestStates[id] : undefined;
         if (gs) {
             gs.queuePaused = false;
         }
+        projectToUI(model);
         var guest = getSelectedGuest(model);
         if (!guest)
             return;
         // Re-initiate the current action on the entity
-        var current = gs ? gs.currentAction : model.currentAction;
+        var current = gs ? gs.currentAction : null;
         if (current && current.type === "move" && current.target) {
             unfreezeGuest(model);
             guest.destination = {
@@ -712,10 +718,6 @@
         var guest = getSelectedGuest(model);
         if (!guest)
             return;
-        model.actionQueue.set([]);
-        model.currentAction = { type: "move", target: { x: tileX, y: tileY } };
-        model.moveTickCount = 0;
-        model.lastMoveDist = -1;
         unfreezeGuest(model);
         guest.destination = {
             x: tileX * 32 + 16,
@@ -750,8 +752,6 @@
             x: guest.x + dx * 32,
             y: guest.y + dy * 32
         };
-        model.actionQueue.set([]);
-        model.currentAction = null;
     }
     // ── Global Executor ────────────────────────────────────────────────────
     var globalTickInterval = null;
@@ -871,11 +871,6 @@
             };
         }
     }
-    var uiModel = null;
-    /** Register the UI model so the executor can sync state directly to stores. */
-    function setUIModel(model) {
-        uiModel = model;
-    }
     function globalExecuteTick() {
         var ids = Object.keys(guestStates);
         for (var i = 0; i < ids.length; i++) {
@@ -891,64 +886,8 @@
                 continue;
             executeGuestTick(id, gs);
         }
-        // Sync selected guest's state → UI stores (atomic, same call frame)
-        if (uiModel !== null) {
-            var selId = uiModel.selectedGuestId.get();
-            if (selId !== null) {
-                var selGs = guestStates[selId];
-                if (selGs && selGs.mode === "queued") {
-                    syncGuestToUI(uiModel, selGs);
-                }
-            }
-        }
-    }
-    /** One-way sync: guestStates → UI stores. Only sets stores when values differ. */
-    function syncGuestToUI(model, gs) {
-        var changed = false;
-        model.isRefreshing = true;
-        if (model.queuePaused.get() !== gs.queuePaused) {
-            model.queuePaused.set(gs.queuePaused);
-            changed = true;
-        }
-        if (model.queueExecutingIndex.get() !== gs.queueExecutingIndex) {
-            model.queueExecutingIndex.set(gs.queueExecutingIndex);
-            changed = true;
-        }
-        if (model.currentAction !== gs.currentAction) {
-            model.currentAction = gs.currentAction;
-            changed = true;
-        }
-        // Compare queue by length — executor either slices (shrinks) or leaves it
-        var mq = model.actionQueue.get();
-        if (mq.length !== gs.actionQueue.length) {
-            model.actionQueue.set(gs.actionQueue.slice());
-            changed = true;
-        }
-        if (changed) {
-            refreshQueueList(model);
-        }
-        model.isRefreshing = false;
-    }
-    /** Sync global guestStates → UI model for the selected guest (call from onUpdate). */
-    function syncFromGlobalState(model) {
-        var id = model.selectedGuestId.get();
-        if (id === null)
-            return;
-        var gs = guestStates[id];
-        if (!gs || gs.mode !== "queued")
-            return;
-        syncGuestToUI(model, gs);
-    }
-    /** Sync a single field from UI model → global guestStates for the selected guest. */
-    function syncSettingToGlobal(model) {
-        var id = model.selectedGuestId.get();
-        if (id === null)
-            return;
-        var gs = guestStates[id];
-        if (!gs)
-            return;
-        gs.keepSteps = model.keepSteps.get();
-        gs.loopQueue = model.loopQueue.get();
+        // Signal that state may have changed (picked up by projectIfDirty in onUpdate)
+        markProjectionDirty();
     }
     // ── Direction walking ──────────────────────────────────────────────────
     function startDirectionWalk(model, direction) {
@@ -1034,17 +973,14 @@
                 var entity = map.getEntity(e.entityId);
                 if (!entity || entity.type !== "guest")
                     return;
-                // Save current guest state before switching
-                saveCurrentGuestState(model);
+                // Release direct-mode guest before switching
+                releaseDirectGuest(model);
                 stopDirectionWalk(model);
                 deactivateMoveTool(model);
-                // Ensure the picked guest has a state entry
-                ensureGuestState(model, e.entityId);
-                // Select and load
+                // Ensure the picked guest has a state entry, then select
+                ensureGuestState(e.entityId);
                 selectGuest(model, e.entityId);
-                loadGuestState(model, e.entityId);
                 refreshGuestList(model);
-                refreshQueueList(model);
             },
             onFinish: function () {
                 model.pickerActive.set(false);
@@ -1115,37 +1051,34 @@
             pauseQueue(model);
             deactivateMoveTool(model);
         }
-        model.selectedMode.set(newModeIndex);
         var id = model.selectedGuestId.get();
         // Enter new mode
         if (newModeIndex === 0) {
             // Uncontrolled — dispose all state, let AI take over
             unfreezeGuest(model);
-            clearActions(model);
-            model.heldDirection.set(-1);
             if (id !== null) {
-                delete guestStates[id];
+                clearActions(model);
+                removeGuestState(id);
             }
         }
         else if (newModeIndex === 1) {
             // Direct — activate idle state
             freezeGuest(model);
             if (id !== null) {
-                var gs = ensureGuestState(model, id);
+                var gs = ensureGuestState(id);
                 gs.mode = "direct";
             }
         }
         else if (newModeIndex === 2) {
             // Queued — activate paused queue state
             freezeGuest(model);
-            model.queuePaused.set(true);
             if (id !== null) {
-                var gs = ensureGuestState(model, id);
+                var gs = ensureGuestState(id);
                 gs.mode = "queued";
                 gs.queuePaused = true;
             }
         }
-        // Refresh guest list to update mode labels in dropdown
+        projectToUI(model);
         refreshGuestList(model);
     }
 
@@ -1230,7 +1163,7 @@
                                 height: "24px",
                                 tooltip: "Spawn a new guest",
                                 onClick: function () {
-                                    saveCurrentGuestState(model);
+                                    releaseDirectGuest(model);
                                     stopDirectionWalk(model);
                                     deactivateMoveTool(model);
                                     spawnGuest(model);
@@ -1263,17 +1196,14 @@
                         }),
                         selectedIndex: t$3(model.selectedGuestIndex),
                         onChange: function (index) {
-                            if (model.isRefreshing)
-                                return;
                             var list = model.guestList.get();
                             var newId = (index > 0 && index <= list.length) ? list[index - 1].id : null;
-                            saveCurrentGuestState(model);
+                            releaseDirectGuest(model);
                             stopDirectionWalk(model);
                             deactivateMoveTool(model);
                             if (newId !== null) {
+                                ensureGuestState(newId);
                                 selectGuest(model, newId);
-                                loadGuestState(model, newId);
-                                refreshQueueList(model);
                             }
                             else {
                                 resetState(model);
@@ -1286,8 +1216,6 @@
                         selectedIndex: model.selectedMode,
                         disabled: model.noGuest,
                         onChange: function (index) {
-                            if (model.isRefreshing)
-                                return;
                             handleModeChange(model, index);
                         }
                     })
@@ -1449,15 +1377,12 @@
                             isPressed: model.queuePaused,
                             visibility: vis2,
                             onChange: function (pressed) {
-                                if (model.isRefreshing)
-                                    return;
                                 if (pressed) {
                                     pauseQueue(model);
                                 }
                                 else {
                                     resumeQueue(model);
                                 }
-                                refreshQueueList(model);
                             }
                         }),
                         p$3({
@@ -1470,13 +1395,14 @@
                                     isChecked: i$4(model.keepSteps, function (k) { return !k; }),
                                     visibility: vis2,
                                     onChange: function (checked) {
-                                        if (model.isRefreshing)
-                                            return;
-                                        model.keepSteps.set(!checked);
-                                        if (checked) {
-                                            model.loopQueue.set(false);
+                                        var id = model.selectedGuestId.get();
+                                        if (id !== null && guestStates[id]) {
+                                            guestStates[id].keepSteps = !checked;
+                                            if (checked) {
+                                                guestStates[id].loopQueue = false;
+                                            }
                                         }
-                                        syncSettingToGlobal(model);
+                                        projectToUI(model);
                                     }
                                 }),
                                 r$2({
@@ -1485,10 +1411,11 @@
                                     isChecked: t$3(model.loopQueue),
                                     disabled: i$4(model.keepSteps, function (k) { return !k; }),
                                     visibility: vis2,
-                                    onChange: function () {
-                                        if (model.isRefreshing)
-                                            return;
-                                        syncSettingToGlobal(model);
+                                    onChange: function (checked) {
+                                        var id = model.selectedGuestId.get();
+                                        if (id !== null && guestStates[id]) {
+                                            guestStates[id].loopQueue = checked;
+                                        }
                                     }
                                 })
                             ]
@@ -1712,7 +1639,7 @@
         var raw = context.getParkStorage().get(STORAGE_KEY);
         if (!raw || !raw.guests)
             return;
-        resetGuestStates();
+        resetAllGuestStates();
         var keys = Object.keys(raw.guests);
         for (var i = 0; i < keys.length; i++) {
             var key = keys[i];
@@ -1735,7 +1662,7 @@
                 gs.actionQueue = saved.actionQueue;
             }
             gs.currentAction = saved.currentAction || null;
-            gs.queuePaused = saved.queuePaused !== false;
+            gs.queuePaused = saved.queuePaused === true;
             gs.queueExecutingIndex = typeof saved.queueExecutingIndex === "number" ? saved.queueExecutingIndex : -1;
             gs.keepSteps = saved.keepSteps === true;
             gs.loopQueue = saved.loopQueue === true;
@@ -1743,12 +1670,32 @@
             gs.lastMoveDist = typeof saved.lastMoveDist === "number" ? saved.lastMoveDist : -1;
             gs.actionTickCount = saved.actionTickCount || 0;
             guestStates[id] = gs;
-            // Re-freeze guests that were in direct or queued mode
+            // Restore entity state based on mode and current action
             if (gs.mode === "direct" || gs.mode === "queued") {
                 var guest = entity;
-                guest.setFlag("positionFrozen", true);
-                guest.animation = "watchRide";
-                guest.animationOffset = 0;
+                if (gs.mode === "queued" && !gs.queuePaused && gs.currentAction) {
+                    // Guest was actively executing — re-initiate the action
+                    if (gs.currentAction.type === "move" && gs.currentAction.target) {
+                        guest.setFlag("positionFrozen", false);
+                        guest.animation = "walking";
+                        guest.animationOffset = 0;
+                        guest.destination = {
+                            x: gs.currentAction.target.x * 32 + 16,
+                            y: gs.currentAction.target.y * 32 + 16
+                        };
+                    }
+                    else if (gs.currentAction.type === "action") {
+                        guest.setFlag("positionFrozen", true);
+                        guest.animation = gs.currentAction.animation;
+                        guest.animationOffset = 0;
+                    }
+                }
+                else {
+                    // Paused, direct mode, or no current action — idle freeze
+                    guest.setFlag("positionFrozen", true);
+                    guest.animation = "watchRide";
+                    guest.animationOffset = 0;
+                }
             }
         }
     }
@@ -1763,15 +1710,14 @@
             padding: 5,
             colours: [r.Grey, r.OliveGreen, r.OliveGreen],
             onOpen: function () {
-                setUIModel(model);
                 model.guestRefreshCounter = 0;
                 resetState(model);
                 refreshGuestList(model);
+                projectToUI(model);
             },
             onUpdate: function () {
                 enforceAccessories(model);
-                // Sync executor changes → UI for selected guest
-                syncFromGlobalState(model);
+                projectIfDirty(model);
                 model.guestRefreshCounter++;
                 if (model.guestRefreshCounter >= GUEST_REFRESH_INTERVAL) {
                     model.guestRefreshCounter = 0;
@@ -1789,16 +1735,15 @@
                 if (ui.tool) {
                     ui.tool.cancel();
                 }
-                // Save UI state back to global guestStates, then reset
-                saveCurrentGuestState(model);
+                // Release direct-mode guest (unfreezes + removes state)
+                releaseDirectGuest(model);
                 savePluginState();
                 resetState(model);
-                setUIModel(null);
             },
             onTabChange: function () {
                 refreshGuestList(model);
                 refreshActionAnimations(model);
-                refreshQueueList(model);
+                projectToUI(model);
             },
             tabs: [
                 e$5({
@@ -1847,9 +1792,6 @@
             });
         });
         context.subscribe("map.save", function () {
-            if (sharedModel) {
-                saveCurrentGuestState(sharedModel);
-            }
             savePluginState();
         });
         console.log("[peepsim] loaded v".concat(PLUGIN_VERSION));

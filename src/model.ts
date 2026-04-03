@@ -80,17 +80,6 @@ export const ACTION_EXCLUDE = [
     "hanging", "drowning"
 ];
 
-// ── Global guest state (singleton, survives window close) ──────────────
-
-export var guestStates: { [id: number]: GuestState } = {};
-
-export function resetGuestStates(): void {
-    var keys = Object.keys(guestStates);
-    for (var i = 0; i < keys.length; i++) {
-        delete guestStates[parseInt(keys[i], 10)];
-    }
-}
-
 // ── ViewModel ──────────────────────────────────────────────────────────
 
 export class PeepSimModel {
@@ -141,13 +130,8 @@ export class PeepSimModel {
     readonly hasGuest: Store<boolean> = compute(this.selectedGuestId, id => id !== null);
     readonly noGuest: Store<boolean> = compute(this.selectedGuestId, id => id === null);
 
-    // Internals
-    isRefreshing = false;
+    // UI-only timer handles
     directionInterval: number | null = null;
     actionPlayInterval: number | null = null;
-    currentAction: QueuedAction | null = null;
-    moveTickCount = 0;
-    lastMoveDist = -1;
-    actionTickCount = 0;
     guestRefreshCounter = 0;
 }

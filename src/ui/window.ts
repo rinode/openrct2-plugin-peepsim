@@ -3,12 +3,12 @@ import { PeepSimModel } from "../model";
 import {
     refreshGuestList, enforceAccessories,
     syncAppearanceFromGuest, refreshActionAnimations,
-    saveCurrentGuestState, loadGuestState, resetState
+    releaseDirectGuest, resetState
 } from "../guest";
 import {
-    stopDirectionWalk, deactivateMoveTool, deactivatePickerTool,
-    refreshQueueList, syncFromGlobalState, setUIModel
+    stopDirectionWalk, deactivatePickerTool
 } from "../actions";
+import { projectToUI, projectIfDirty } from "../state";
 import { initPauseSprites } from "./pauseButton";
 import { controlTab } from "./controlTab";
 import { appearanceTab } from "./appearanceTab";
@@ -25,15 +25,14 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
         padding: 5,
         colours: [Colour.Grey, Colour.OliveGreen, Colour.OliveGreen],
         onOpen: () => {
-            setUIModel(model);
             model.guestRefreshCounter = 0;
             resetState(model);
             refreshGuestList(model);
+            projectToUI(model);
         },
         onUpdate: () => {
             enforceAccessories(model);
-            // Sync executor changes → UI for selected guest
-            syncFromGlobalState(model);
+            projectIfDirty(model);
             model.guestRefreshCounter++;
             if (model.guestRefreshCounter >= GUEST_REFRESH_INTERVAL) {
                 model.guestRefreshCounter = 0;
@@ -51,16 +50,15 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
             if (ui.tool) {
                 ui.tool.cancel();
             }
-            // Save UI state back to global guestStates, then reset
-            saveCurrentGuestState(model);
+            // Release direct-mode guest (unfreezes + removes state)
+            releaseDirectGuest(model);
             savePluginState();
             resetState(model);
-            setUIModel(null);
         },
         onTabChange: () => {
             refreshGuestList(model);
             refreshActionAnimations(model);
-            refreshQueueList(model);
+            projectToUI(model);
         },
         tabs: [
             tab({

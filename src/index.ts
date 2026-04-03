@@ -2,7 +2,6 @@ import { PeepSimModel } from "./model";
 import { createPeepSimWindow } from "./ui/window";
 import { loadPluginState, savePluginState } from "./storage";
 import { startGlobalExecutor } from "./actions";
-import { saveCurrentGuestState } from "./guest";
 
 const PLUGIN_VERSION = "0.3.0";
 
@@ -42,9 +41,6 @@ function main(): void {
     });
 
     context.subscribe("map.save", () => {
-        if (sharedModel) {
-            saveCurrentGuestState(sharedModel);
-        }
         savePluginState();
     });
 

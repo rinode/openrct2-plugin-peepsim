@@ -1,4 +1,5 @@
-import { QueuedAction, GuestState, createGuestState, guestStates, resetGuestStates } from "./model";
+import { QueuedAction, GuestState, createGuestState } from "./model";
+import { guestStates, resetAllGuestStates } from "./state";
 
 interface SerializedGuestState {
     mode: string;
@@ -61,7 +62,7 @@ export function loadPluginState(): void {
     const raw = context.getParkStorage().get<SerializedPluginState>(STORAGE_KEY);
     if (!raw || !raw.guests) return;
 
-    resetGuestStates();
+    resetAllGuestStates();
 
     var keys = Object.keys(raw.guests);
     for (var i = 0; i < keys.length; i++) {
@@ -84,7 +85,7 @@ export function loadPluginState(): void {
             gs.actionQueue = saved.actionQueue;
         }
         gs.currentAction = saved.currentAction || null;
-        gs.queuePaused = saved.queuePaused !== false;
+        gs.queuePaused = saved.queuePaused === true;
         gs.queueExecutingIndex = typeof saved.queueExecutingIndex === "number" ? saved.queueExecutingIndex : -1;
         gs.keepSteps = saved.keepSteps === true;
         gs.loopQueue = saved.loopQueue === true;
@@ -94,12 +95,31 @@ export function loadPluginState(): void {
 
         guestStates[id] = gs;
 
-        // Re-freeze guests that were in direct or queued mode
+        // Restore entity state based on mode and current action
         if (gs.mode === "direct" || gs.mode === "queued") {
             var guest = entity as Guest;
-            guest.setFlag("positionFrozen", true);
-            guest.animation = "watchRide";
-            guest.animationOffset = 0;
+
+            if (gs.mode === "queued" && !gs.queuePaused && gs.currentAction) {
+                // Guest was actively executing — re-initiate the action
+                if (gs.currentAction.type === "move" && gs.currentAction.target) {
+                    guest.setFlag("positionFrozen", false);
+                    guest.animation = "walking";
+                    guest.animationOffset = 0;
+                    guest.destination = {
+                        x: gs.currentAction.target.x * 32 + 16,
+                        y: gs.currentAction.target.y * 32 + 16
+                    };
+                } else if (gs.currentAction.type === "action") {
+                    guest.setFlag("positionFrozen", true);
+                    guest.animation = gs.currentAction.animation! as GuestAnimation;
+                    guest.animationOffset = 0;
+                }
+            } else {
+                // Paused, direct mode, or no current action — idle freeze
+                guest.setFlag("positionFrozen", true);
+                guest.animation = "watchRide";
+                guest.animationOffset = 0;
+            }
         }
     }
 }
