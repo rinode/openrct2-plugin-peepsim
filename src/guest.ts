@@ -8,7 +8,7 @@ import {
     GuestEntry,
     createGuestState
 } from "./model";
-import { guestStates, ensureGuestState, projectToUI } from "./state";
+import { guestStates, ensureGuestState, projectToUI, setProjecting } from "./state";
 
 export function getSelectedGuest(model: PeepSimModel): Guest | null {
     const id = model.selectedGuestId.get();
@@ -85,8 +85,10 @@ export function refreshGuestList(model: PeepSimModel): void {
         ? (list.findIndex(g => g.id === currentId) + 1) || 0
         : 0;
 
+    setProjecting(true);
     model.guestList.set(list);
     model.selectedGuestIndex.set(newIdx);
+    setProjecting(false);
 }
 
 // ── Find guest ─────────────────────────────────────────────────────────

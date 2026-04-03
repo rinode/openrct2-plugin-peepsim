@@ -24,7 +24,7 @@ function modeVis(model: PeepSimModel, targetMode: number) {
 }
 
 export function controlTab(model: PeepSimModel): WidgetCreator<FlexiblePosition>[] {
-    // Shared visibility stores — one per mode, applied to every leaf control
+    // Shared visibility stores, one per mode, applied to every leaf control
     // so that OpenRCT2's flat widget list properly hides children.
     var vis0 = modeVis(model, 0);
     var vis1 = modeVis(model, 1);

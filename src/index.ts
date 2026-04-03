@@ -5,7 +5,7 @@ import { startGlobalExecutor } from "./actions";
 
 const PLUGIN_VERSION = "0.3.0";
 
-// Shared model instance — survives window close/reopen
+// Shared model instance, survives window close/reopen
 var sharedModel: PeepSimModel | null = null;
 
 export function getSharedModel(): PeepSimModel {

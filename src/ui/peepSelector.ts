@@ -3,7 +3,7 @@ import {
     WidgetCreator, FlexiblePosition
 } from "openrct2-flexui";
 import { PeepSimModel, MODE_LABELS } from "../model";
-import { guestStates, ensureGuestState } from "../state";
+import { guestStates, ensureGuestState, isProjecting } from "../state";
 import {
     selectGuest, spawnGuest, refreshGuestList, freezeGuest,
     syncAccessoriesFromGuest, releaseDirectGuest, resetState, findGuest
@@ -86,6 +86,7 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                     }),
                     selectedIndex: twoway(model.selectedGuestIndex),
                     onChange: function (index: number) {
+                        if (isProjecting()) return;
                         var list = model.guestList.get();
                         var newId = (index > 0 && index <= list.length) ? list[index - 1].id : null;
                         releaseDirectGuest(model);

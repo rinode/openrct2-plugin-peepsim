@@ -1,6 +1,6 @@
 import { PeepSimModel, GuestState, GuestMode, createGuestState, ACTION_LABELS } from "./model";
 
-// ── Centralized guest state (single source of truth) ──────────────────
+// ── Centralized guest state ───────────────────────────────────────────
 
 export var guestStates: { [id: number]: GuestState } = {};
 
@@ -28,7 +28,19 @@ export function resetAllGuestStates(): void {
     }
 }
 
-// ── Dirty flag for executor → UI projection ───────────────────────────
+// ── Projection guard (prevents dropdown onChange during store updates) ──
+
+var _projecting = false;
+
+export function isProjecting(): boolean {
+    return _projecting;
+}
+
+export function setProjecting(value: boolean): void {
+    _projecting = value;
+}
+
+// ── Dirty flag (executor → UI projection) ─────────────────────────────
 
 var _projectionDirty = false;
 
@@ -36,14 +48,14 @@ export function markProjectionDirty(): void {
     _projectionDirty = true;
 }
 
-/** Called from onUpdate — cheap no-op most ticks. */
+/** Called from onUpdate; no-op when nothing changed. */
 export function projectIfDirty(model: PeepSimModel): void {
     if (!_projectionDirty) return;
     _projectionDirty = false;
     projectToUI(model);
 }
 
-// ── One-way projection: guestStates → UI stores ──────────────────────
+// ── One-way projection (guestStates → UI stores) ─────────────────────
 
 function modeToIndex(mode: GuestMode): number {
     if (mode === "direct") return 1;
@@ -51,18 +63,18 @@ function modeToIndex(mode: GuestMode): number {
     return 0;
 }
 
-/** Project the selected guest's state onto UI stores. Called by commands
- *  (immediate feedback) and by projectIfDirty (executor-driven changes). */
+/** Push the selected guest's state into the UI stores. */
 export function projectToUI(model: PeepSimModel): void {
     _projectionDirty = false;
+    _projecting = true;
 
     var id = model.selectedGuestId.get();
-    if (id === null) { projectToUIDefaults(model); return; }
+    if (id === null) { projectToUIDefaults(model); _projecting = false; return; }
 
     var gs = guestStates[id];
-    if (!gs) { projectToUIDefaults(model); return; }
+    if (!gs) { projectToUIDefaults(model); _projecting = false; return; }
 
-    // Primitives — FlexUI's .set() no-ops on equal values
+    // Primitives (FlexUI .set() skips if value unchanged)
     model.selectedMode.set(modeToIndex(gs.mode));
     model.keepSteps.set(gs.keepSteps);
     model.loopQueue.set(gs.loopQueue);
@@ -80,7 +92,7 @@ export function projectToUI(model: PeepSimModel): void {
         listDirty = true;
     }
 
-    // Array — only clone when queue length changed
+    // Array: only clone when queue length changed
     var storeQueue = model.actionQueue.get();
     if (storeQueue.length !== gs.actionQueue.length) {
         model.actionQueue.set(gs.actionQueue.slice());
@@ -91,9 +103,11 @@ export function projectToUI(model: PeepSimModel): void {
     if (listDirty) {
         refreshQueueListFromState(model, gs);
     }
+
+    _projecting = false;
 }
 
-/** Clear stores to defaults (no guest selected / deselect). */
+/** Reset all projected stores to defaults. */
 export function projectToUIDefaults(model: PeepSimModel): void {
     model.selectedMode.set(0);
     model.actionQueue.set([]);
@@ -105,7 +119,7 @@ export function projectToUIDefaults(model: PeepSimModel): void {
     model.queueListItems.set([]);
 }
 
-/** Build the queue display list from a GuestState (moved from actions.ts refreshQueueList). */
+/** Build the queue display list from a GuestState. */
 function refreshQueueListFromState(model: PeepSimModel, gs: GuestState): void {
     var actions = gs.actionQueue;
     var execIdx = gs.queueExecutingIndex;

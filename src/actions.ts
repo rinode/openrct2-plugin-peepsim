@@ -455,21 +455,21 @@ export function handleModeChange(model: PeepSimModel, newModeIndex: number): voi
 
     // Enter new mode
     if (newModeIndex === 0) {
-        // Uncontrolled — dispose all state, let AI take over
+        // Uncontrolled: dispose all state, let AI take over
         unfreezeGuest(model);
         if (id !== null) {
             clearActions(model);
             removeGuestState(id);
         }
     } else if (newModeIndex === 1) {
-        // Direct — activate idle state
+        // Direct: activate idle state
         freezeGuest(model);
         if (id !== null) {
             var gs = ensureGuestState(id);
             gs.mode = "direct";
         }
     } else if (newModeIndex === 2) {
-        // Queued — activate paused queue state
+        // Queued: activate paused queue state
         freezeGuest(model);
         if (id !== null) {
             var gs = ensureGuestState(id);

@@ -298,7 +298,7 @@
         return PeepSimModel;
     }());
 
-    // ── Centralized guest state (single source of truth) ──────────────────
+    // ── Centralized guest state ───────────────────────────────────────────
     var guestStates = {};
     function ensureGuestState(id) {
         var gs = guestStates[id];
@@ -317,19 +317,27 @@
             delete guestStates[parseInt(keys[i], 10)];
         }
     }
-    // ── Dirty flag for executor → UI projection ───────────────────────────
+    // ── Projection guard (prevents dropdown onChange during store updates) ──
+    var _projecting = false;
+    function isProjecting() {
+        return _projecting;
+    }
+    function setProjecting(value) {
+        _projecting = value;
+    }
+    // ── Dirty flag (executor → UI projection) ─────────────────────────────
     var _projectionDirty = false;
     function markProjectionDirty() {
         _projectionDirty = true;
     }
-    /** Called from onUpdate — cheap no-op most ticks. */
+    /** Called from onUpdate; no-op when nothing changed. */
     function projectIfDirty(model) {
         if (!_projectionDirty)
             return;
         _projectionDirty = false;
         projectToUI(model);
     }
-    // ── One-way projection: guestStates → UI stores ──────────────────────
+    // ── One-way projection (guestStates → UI stores) ─────────────────────
     function modeToIndex(mode) {
         if (mode === "direct")
             return 1;
@@ -337,21 +345,23 @@
             return 2;
         return 0;
     }
-    /** Project the selected guest's state onto UI stores. Called by commands
-     *  (immediate feedback) and by projectIfDirty (executor-driven changes). */
+    /** Push the selected guest's state into the UI stores. */
     function projectToUI(model) {
         _projectionDirty = false;
+        _projecting = true;
         var id = model.selectedGuestId.get();
         if (id === null) {
             projectToUIDefaults(model);
+            _projecting = false;
             return;
         }
         var gs = guestStates[id];
         if (!gs) {
             projectToUIDefaults(model);
+            _projecting = false;
             return;
         }
-        // Primitives — FlexUI's .set() no-ops on equal values
+        // Primitives (FlexUI .set() skips if value unchanged)
         model.selectedMode.set(modeToIndex(gs.mode));
         model.keepSteps.set(gs.keepSteps);
         model.loopQueue.set(gs.loopQueue);
@@ -366,7 +376,7 @@
             model.queueExecutingIndex.set(gs.queueExecutingIndex);
             listDirty = true;
         }
-        // Array — only clone when queue length changed
+        // Array: only clone when queue length changed
         var storeQueue = model.actionQueue.get();
         if (storeQueue.length !== gs.actionQueue.length) {
             model.actionQueue.set(gs.actionQueue.slice());
@@ -376,8 +386,9 @@
         if (listDirty) {
             refreshQueueListFromState(model, gs);
         }
+        _projecting = false;
     }
-    /** Clear stores to defaults (no guest selected / deselect). */
+    /** Reset all projected stores to defaults. */
     function projectToUIDefaults(model) {
         model.selectedMode.set(0);
         model.actionQueue.set([]);
@@ -388,7 +399,7 @@
         model.heldDirection.set(-1);
         model.queueListItems.set([]);
     }
-    /** Build the queue display list from a GuestState (moved from actions.ts refreshQueueList). */
+    /** Build the queue display list from a GuestState. */
     function refreshQueueListFromState(model, gs) {
         var actions = gs.actionQueue;
         var execIdx = gs.queueExecutingIndex;
@@ -478,8 +489,10 @@
         var newIdx = (currentId !== null)
             ? (list.findIndex(function (g) { return g.id === currentId; }) + 1) || 0
             : 0;
+        setProjecting(true);
         model.guestList.set(list);
         model.selectedGuestIndex.set(newIdx);
+        setProjecting(false);
     }
     // ── Find guest ─────────────────────────────────────────────────────────
     function findGuest(model) {
@@ -1054,7 +1067,7 @@
         var id = model.selectedGuestId.get();
         // Enter new mode
         if (newModeIndex === 0) {
-            // Uncontrolled — dispose all state, let AI take over
+            // Uncontrolled: dispose all state, let AI take over
             unfreezeGuest(model);
             if (id !== null) {
                 clearActions(model);
@@ -1062,7 +1075,7 @@
             }
         }
         else if (newModeIndex === 1) {
-            // Direct — activate idle state
+            // Direct: activate idle state
             freezeGuest(model);
             if (id !== null) {
                 var gs = ensureGuestState(id);
@@ -1070,7 +1083,7 @@
             }
         }
         else if (newModeIndex === 2) {
-            // Queued — activate paused queue state
+            // Queued: activate paused queue state
             freezeGuest(model);
             if (id !== null) {
                 var gs = ensureGuestState(id);
@@ -1196,6 +1209,8 @@
                         }),
                         selectedIndex: t$3(model.selectedGuestIndex),
                         onChange: function (index) {
+                            if (isProjecting())
+                                return;
                             var list = model.guestList.get();
                             var newId = (index > 0 && index <= list.length) ? list[index - 1].id : null;
                             releaseDirectGuest(model);
@@ -1232,7 +1247,7 @@
         return i$4(model.selectedMode, function (m) { return (m === targetMode ? "visible" : "none"); });
     }
     function controlTab(model) {
-        // Shared visibility stores — one per mode, applied to every leaf control
+        // Shared visibility stores, one per mode, applied to every leaf control
         // so that OpenRCT2's flat widget list properly hides children.
         var vis0 = modeVis(model, 0);
         var vis1 = modeVis(model, 1);
@@ -1674,7 +1689,7 @@
             if (gs.mode === "direct" || gs.mode === "queued") {
                 var guest = entity;
                 if (gs.mode === "queued" && !gs.queuePaused && gs.currentAction) {
-                    // Guest was actively executing — re-initiate the action
+                    // Guest was actively executing, re-initiate the action
                     if (gs.currentAction.type === "move" && gs.currentAction.target) {
                         guest.setFlag("positionFrozen", false);
                         guest.animation = "walking";
@@ -1691,7 +1706,7 @@
                     }
                 }
                 else {
-                    // Paused, direct mode, or no current action — idle freeze
+                    // Paused, direct mode, or no current action: idle freeze
                     guest.setFlag("positionFrozen", true);
                     guest.animation = "watchRide";
                     guest.animationOffset = 0;
@@ -1761,7 +1776,7 @@
     }
 
     var PLUGIN_VERSION = "0.3.0";
-    // Shared model instance — survives window close/reopen
+    // Shared model instance, survives window close/reopen
     var sharedModel = null;
     function getSharedModel() {
         if (!sharedModel) {

@@ -100,7 +100,7 @@ export function loadPluginState(): void {
             var guest = entity as Guest;
 
             if (gs.mode === "queued" && !gs.queuePaused && gs.currentAction) {
-                // Guest was actively executing — re-initiate the action
+                // Guest was actively executing, re-initiate the action
                 if (gs.currentAction.type === "move" && gs.currentAction.target) {
                     guest.setFlag("positionFrozen", false);
                     guest.animation = "walking";
@@ -115,7 +115,7 @@ export function loadPluginState(): void {
                     guest.animationOffset = 0;
                 }
             } else {
-                // Paused, direct mode, or no current action — idle freeze
+                // Paused, direct mode, or no current action: idle freeze
                 guest.setFlag("positionFrozen", true);
                 guest.animation = "watchRide";
                 guest.animationOffset = 0;
