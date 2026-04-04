@@ -1,6 +1,6 @@
 # PeepSim - OpenRCT2 Plugin
 
-A guest control plugin for OpenRCT2. Select or spawn guests, move them around the park, sequence action routines, dress them up, and save everything into the park file.
+A guest control plugin for OpenRCT2. Select or spawn guests, move them around the park, sequence action routines, dress them up, and persist everything into the park file!
 
 ![PeepSim demo](peepsim.gif)
 
@@ -24,7 +24,7 @@ Both tabs share a panel at the top with:
 - Eyedropper tool to pick a guest from the park
 - Locate button to scroll the main viewport to the guest
 - Spawn button to create a new guest in direct control mode
-- Search button to open a guest picker popup (sticks to the main window)
+- Search button to open a popup to view and select your controlled guests
 - Guest name label and mode dropdown
 
 ### Direct Control
