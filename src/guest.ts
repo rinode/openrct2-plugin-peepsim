@@ -92,19 +92,26 @@ export function refreshGuestList(model: PeepSimModel): void {
     // Build dropdown items (plain strings, no compute chain)
     var items: string[] = ["(none)"];
     for (var j = 0; j < list.length; j++) {
-        var g = list[j];
-        var gs2 = guestStates[g.id];
-        var suffix = "";
-        if (gs2) {
-            if (gs2.mode === "direct") suffix = " (dc)";
-            else if (gs2.mode === "queued") suffix = " (qc)";
-        }
-        items.push(g.name + suffix);
+        items.push(list[j].name);
     }
 
     const newIdx = (currentId !== null)
         ? (list.findIndex(g => g.id === currentId) + 1) || 0
         : 0;
+
+    // Build listview items (for guest list panel)
+    var listViewItems: string[][] = [];
+    for (var k = 0; k < list.length; k++) {
+        var ge = list[k];
+        var gs3 = guestStates[ge.id];
+        var mode = "";
+        if (gs3) {
+            if (gs3.mode === "direct") mode = "Direct";
+            else if (gs3.mode === "queued") mode = "Queued";
+        }
+        listViewItems.push([ge.name, mode]);
+    }
+    model.guestListViewItems.set(listViewItems);
 
     model.guestList.set(list);
     model.guestDropdownItems.set(items);

@@ -1,16 +1,93 @@
 import {
-    button, dropdown, groupbox, horizontal, toggle, vertical, viewport,
-    WidgetCreator, FlexiblePosition
+    button, dropdown, groupbox, horizontal, label, listview,
+    toggle, vertical, viewport, window as flexWindow,
+    Colour, WindowTemplate, WidgetCreator, FlexiblePosition
 } from "openrct2-flexui";
 import { PeepSimModel, MODE_LABELS } from "../model";
 import {
     spawnGuest, refreshGuestList, freezeGuest,
-    syncAccessoriesFromGuest, releaseDirectGuest, findGuest
+    syncAccessoriesFromGuest, releaseDirectGuest, findGuest,
+    selectGuest
 } from "../guest";
 import {
     stopDirectionWalk, deactivateMoveTool, deactivatePickerTool,
     activatePickerTool, handleModeChange
 } from "../actions";
+
+var guestPickerWindow: WindowTemplate | null = null;
+var guestPickerNative: any = null;
+
+function openGuestPicker(model: PeepSimModel): void {
+    if (guestPickerWindow) {
+        guestPickerWindow.close();
+    }
+    refreshGuestList(model);
+    guestPickerWindow = flexWindow({
+        title: "Select Guest",
+        width: 230,
+        height: 200,
+        position: {
+            x: model.mainWindowX + model.mainWindowWidth,
+            y: model.mainWindowY
+        },
+        colours: [Colour.Grey, Colour.OliveGreen],
+        content: [
+            listview({
+                height: "1w",
+                scrollbars: "vertical",
+                isStriped: true,
+                columns: [
+                    { header: "Guest" },
+                    { header: "Mode", width: "70px" }
+                ],
+                items: model.guestListViewItems,
+                canSelect: true,
+                onClick: (row: number) => {
+                    var list = model.guestList.get();
+                    var entry = list[row];
+                    if (!entry) return;
+                    if (entry.id === model.selectedGuestId.get()) return;
+                    releaseDirectGuest(model);
+                    stopDirectionWalk(model);
+                    deactivateMoveTool(model);
+                    selectGuest(model, entry.id);
+                    refreshGuestList(model);
+                    closeGuestPicker();
+                }
+            })
+        ],
+        onOpen: () => {
+            // Cache native window reference for efficient repositioning
+            for (var wid = 0; wid < 128; wid++) {
+                try {
+                    var w = ui.getWindow(wid);
+                    if (w && w.title === "Select Guest") {
+                        guestPickerNative = w;
+                        break;
+                    }
+                } catch (_e) { break; }
+            }
+        },
+        onUpdate: () => {
+            if (guestPickerNative) {
+                guestPickerNative.x = model.mainWindowX + model.mainWindowWidth;
+                guestPickerNative.y = model.mainWindowY;
+            }
+        },
+        onClose: () => {
+            guestPickerWindow = null;
+            guestPickerNative = null;
+            model.guestListVisible.set(false);
+        }
+    });
+    guestPickerWindow.open();
+}
+
+export function closeGuestPicker(): void {
+    if (guestPickerWindow) {
+        guestPickerWindow.close();
+    }
+}
 
 export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePosition> {
     return groupbox({
@@ -62,21 +139,30 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                                 syncAccessoriesFromGuest(model);
                                 refreshGuestList(model);
                             }
+                        }),
+                        toggle({
+                            image: "search" as any,
+                            width: "24px",
+                            height: "24px",
+                            tooltip: "Select a guest from the list",
+                            isPressed: model.guestListVisible,
+                            onChange: (pressed: boolean) => {
+                                if (pressed) {
+                                    model.guestListVisible.set(true);
+                                    openGuestPicker(model);
+                                } else {
+                                    closeGuestPicker();
+                                }
+                            }
                         })
                     ]
                 })
             ]),
             horizontal([
-                dropdown({
+                label({
+                    text: model.selectedGuestName,
                     width: "1w",
-                    items: model.guestDropdownItems,
-                    selectedIndex: model.selectedGuestIndex,
-                    onChange: function (_index: number) {
-                        // Disabled: FlexUI fires spurious onChange with arbitrary
-                        // indices at unpredictable times (items.set(), tab switches,
-                        // widget re-creation). Cannot distinguish from real clicks.
-                        // Guest switching via picker tool / spawn button instead.
-                    }
+                    height: "16px"
                 }),
                 dropdown({
                     width: "90px",
@@ -87,7 +173,8 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                         if (index === model.selectedMode.get()) return;
                         handleModeChange(model, index);
                     }
-                })
+                }),
+                label({ text: "", width: "24px" })
             ])
         ]
     });

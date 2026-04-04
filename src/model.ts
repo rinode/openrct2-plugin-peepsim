@@ -127,6 +127,14 @@ export class PeepSimModel {
     readonly selectedQueueActionIndex: WritableStore<number> = store(0);
     readonly queueDuration: WritableStore<number> = store(3);
 
+    // Guest list (replaces dropdown)
+    readonly guestListVisible: WritableStore<boolean> = store(false);
+    readonly guestListViewItems: WritableStore<string[][]> = store<string[][]>([]);
+    readonly selectedGuestName: Store<string> = compute(
+        this.selectedGuestIndex, this.guestDropdownItems,
+        (idx, items) => idx > 0 && idx < items.length ? items[idx] : "(none)"
+    );
+
     // Has-guest computed
     readonly hasGuest: Store<boolean> = compute(this.selectedGuestId, id => id !== null);
     readonly noGuest: Store<boolean> = compute(this.selectedGuestId, id => id === null);
@@ -134,5 +142,10 @@ export class PeepSimModel {
     // UI-only timer handles
     directionInterval: number | null = null;
     actionPlayInterval: number | null = null;
+
+    // Main window position (updated each tick for popup positioning)
+    mainWindowX: number = 0;
+    mainWindowY: number = 0;
+    mainWindowWidth: number = 300;
 
 }

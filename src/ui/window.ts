@@ -11,6 +11,7 @@ import {
 import { projectToUI, projectIfDirty } from "../state";
 import { initPauseSprites } from "./pauseButton";
 import { controlTab } from "./controlTab";
+import { closeGuestPicker } from "./peepSelector";
 import { appearanceTab } from "./appearanceTab";
 import { savePluginState } from "../storage";
 
@@ -29,11 +30,26 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
             projectToUI(model);
         },
         onUpdate: () => {
+            // Cache main window position only when guest picker is open
+            if (model.guestListVisible.get()) {
+                for (var wid = 0; wid < 128; wid++) {
+                    try {
+                        var w = ui.getWindow(wid);
+                        if (w && w.title === "PeepSim") {
+                            model.mainWindowX = w.x;
+                            model.mainWindowY = w.y;
+                            model.mainWindowWidth = w.width;
+                            break;
+                        }
+                    } catch (_e) { break; }
+                }
+            }
             enforceAccessories(model);
             projectIfDirty(model);
             syncAppearanceFromGuest(model);
         },
         onClose: () => {
+            closeGuestPicker();
             stopDirectionWalk(model);
             deactivatePickerTool(model);
             if (model.actionPlayInterval !== null) {

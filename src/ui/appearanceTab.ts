@@ -13,6 +13,7 @@ export function appearanceTab(model: PeepSimModel): WidgetCreator<FlexiblePositi
         peepSelector(model),
         groupbox({
             text: "Appearance",
+            width: "1w",
             content: [
                 horizontal([
                     label({ text: "Shirt colour:", width: "90px" }),
