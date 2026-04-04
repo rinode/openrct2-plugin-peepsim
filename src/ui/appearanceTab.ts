@@ -26,8 +26,8 @@ export function appearanceTab(model: PeepSimModel): WidgetCreator<FlexiblePositi
                                 guest.tshirtColour = colour;
                                 model.shirtColour.set(colour);
                             }
-                        }
-                    })
+                        },
+                    }),
                 ]),
                 horizontal([
                     label({ text: "Pants colour:", width: "90px" }),
@@ -40,8 +40,8 @@ export function appearanceTab(model: PeepSimModel): WidgetCreator<FlexiblePositi
                                 guest.trousersColour = colour;
                                 model.pantsColour.set(colour);
                             }
-                        }
-                    })
+                        },
+                    }),
                 ]),
                 horizontal([
                     label({ text: "Accessory:", width: "90px" }),
@@ -53,28 +53,28 @@ export function appearanceTab(model: PeepSimModel): WidgetCreator<FlexiblePositi
                         onChange: (index: number) => {
                             model.accessoryIndex.set(index);
                             const type = ACCESSORY_TYPES[index];
-                            if (type && COLOUR_ACCESSORIES[type]) {
+                            if (type && COLOUR_ACCESSORIES.has(type)) {
                                 setAccessory(model, type);
                                 model.accessoryColour.set(DEFAULT_COLOURS[type]);
                                 setAccessoryColour(model, DEFAULT_COLOURS[type]);
                             } else {
                                 setAccessory(model, type);
                             }
-                        }
+                        },
                     }),
                     colourPicker({
                         colour: model.accessoryColour,
                         visibility: compute(model.accessoryIndex, idx => {
                             const type = ACCESSORY_TYPES[idx];
-                            return (type && COLOUR_ACCESSORIES[type] ? "visible" : "hidden") as ElementVisibility;
+                            return (type && COLOUR_ACCESSORIES.has(type) ? "visible" : "hidden") as ElementVisibility;
                         }),
                         disabled: model.noGuest,
                         onChange: (colour: number) => {
                             setAccessoryColour(model, colour);
-                        }
-                    })
-                ])
-            ]
-        })
+                        },
+                    }),
+                ]),
+            ],
+        }),
     ];
 }

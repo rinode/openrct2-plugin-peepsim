@@ -1,12 +1,30 @@
 import { store, compute, WritableStore, Store } from "openrct2-flexui";
+import { Signal, bridge } from "./signal";
 
-// ── Types ──────────────────────────────────────────────────────────────
+// ── Enums ─────────────────────────────────────────────────────────────
 
-export type AccessoryType = "hat" | "sunglasses" | "balloon" | "umbrella";
-export type GuestMode = "uncontrolled" | "direct" | "queued";
+export enum GuestMode {
+    Uncontrolled = "uncontrolled",
+    Direct = "direct",
+    Sequence = "sequence",
+}
+
+export enum AccessoryType {
+    Hat = "hat",
+    Sunglasses = "sunglasses",
+    Balloon = "balloon",
+    Umbrella = "umbrella",
+}
+
+export enum ActionType {
+    Move = "move",
+    Action = "action",
+}
+
+// ── Types ─────────────────────────────────────────────────────────────
 
 export interface QueuedAction {
-    type: "move" | "action";
+    type: ActionType;
     target?: { x: number; y: number };
     animation?: string;
     duration?: number;
@@ -18,14 +36,16 @@ export interface GuestEntry {
 }
 
 export interface GuestState {
-    mode: GuestMode;
-    actionQueue: QueuedAction[];
+    // UI-visible (signals — subscriptions auto-propagate to model)
+    mode: Signal<GuestMode>;
+    actionQueue: Signal<QueuedAction[]>;
+    queuePaused: Signal<boolean>;
+    queueExecutingIndex: Signal<number>;
+    keepSteps: Signal<boolean>;
+    loopQueue: Signal<boolean>;
+    heldDirection: Signal<number>;
+    // Executor-internal (plain values)
     currentAction: QueuedAction | null;
-    queuePaused: boolean;
-    queueExecutingIndex: number;
-    keepSteps: boolean;
-    loopQueue: boolean;
-    heldDirection: number;
     moveTickCount: number;
     lastMoveDist: number;
     actionTickCount: number;
@@ -33,25 +53,44 @@ export interface GuestState {
 
 export function createGuestState(): GuestState {
     return {
-        mode: "uncontrolled",
-        actionQueue: [],
+        mode: new Signal<GuestMode>(GuestMode.Uncontrolled),
+        actionQueue: new Signal<QueuedAction[]>([]),
+        queuePaused: new Signal(true),
+        queueExecutingIndex: new Signal(-1),
+        keepSteps: new Signal(false),
+        loopQueue: new Signal(false),
+        heldDirection: new Signal(-1),
         currentAction: null,
-        queuePaused: true,
-        queueExecutingIndex: -1,
-        keepSteps: false,
-        loopQueue: false,
-        heldDirection: -1,
         moveTickCount: 0,
         lastMoveDist: -1,
-        actionTickCount: 0
+        actionTickCount: 0,
     };
 }
 
-export const ACCESSORY_TYPES: (AccessoryType | null)[] = [null, "hat", "sunglasses", "balloon", "umbrella"];
-export const COLOUR_ACCESSORIES: Record<string, boolean> = { hat: true, balloon: true, umbrella: true };
-export const DEFAULT_COLOURS: Record<string, number> = { hat: 6, balloon: 14, umbrella: 0 };
+// ── Constants ─────────────────────────────────────────────────────────
 
-export const MODE_LABELS = ["Uncontrolled", "Direct", "Queued"];
+export const ACCESSORY_TYPES: (AccessoryType | null)[] = [
+    null, AccessoryType.Hat, AccessoryType.Sunglasses,
+    AccessoryType.Balloon, AccessoryType.Umbrella,
+];
+
+export const COLOUR_ACCESSORIES = new Set([
+    AccessoryType.Hat, AccessoryType.Balloon, AccessoryType.Umbrella,
+]);
+
+export const DEFAULT_COLOURS: Record<string, number> = {
+    [AccessoryType.Hat]: 6,
+    [AccessoryType.Balloon]: 14,
+    [AccessoryType.Umbrella]: 0,
+};
+
+export const MODE_LABELS = ["Uncontrolled", "Direct", "Sequence"];
+
+const MODE_INDEX: Record<GuestMode, number> = {
+    [GuestMode.Uncontrolled]: 0,
+    [GuestMode.Direct]: 1,
+    [GuestMode.Sequence]: 2,
+};
 
 export const ACTION_LABELS: Record<string, string> = {
     jump: "Jump",
@@ -70,17 +109,42 @@ export const ACTION_LABELS: Record<string, string> = {
     beingWatched: "Being Watched",
     withdrawMoney: "Withdraw Money",
     emptyPockets: "Empty Pockets",
-    eatFood: "Eat Food"
+    eatFood: "Eat Food",
 };
 
-export const ACTION_EXCLUDE = [
+export const ACTION_EXCLUDE = new Set([
     "walking", "watchRide", "holdMat",
     "sittingIdle", "sittingEatFood",
     "sittingLookAroundLeft", "sittingLookAroundRight",
-    "hanging", "drowning"
-];
+    "hanging", "drowning",
+]);
 
-// ── ViewModel ──────────────────────────────────────────────────────────
+// ── Queue display list builder ────────────────────────────────────────
+
+function rebuildQueueList(model: PeepSimModel, gs: GuestState): void {
+    const actions = gs.actionQueue.get();
+    const execIdx = gs.queueExecutingIndex.get();
+    const paused = gs.queuePaused.get();
+    const items: string[][] = [];
+    for (let i = 0; i < actions.length; i++) {
+        const a = actions[i];
+        let desc: string;
+        if (a.type === ActionType.Action) {
+            const label = ACTION_LABELS[a.animation!] ?? a.animation!;
+            desc = `${label} (${a.duration ?? 3}s)`;
+        } else {
+            desc = `Move → ${a.target!.x}, ${a.target!.y}`;
+        }
+        let status = "";
+        if (i === execIdx) {
+            status = paused ? "||" : "▶";
+        }
+        items.push([status, String(i + 1), desc]);
+    }
+    model.queueListItems.set(items);
+}
+
+// ── ViewModel ─────────────────────────────────────────────────────────
 
 export class PeepSimModel {
 
@@ -91,7 +155,7 @@ export class PeepSimModel {
     readonly selectedGuestIndex: WritableStore<number> = store(0);
     readonly guestTarget: WritableStore<number | null> = store<number | null>(null);
 
-    // Mode for current guest (0=uncontrolled, 1=direct, 2=queued)
+    // Mode for current guest (0=uncontrolled, 1=direct, 2=sequence)
     readonly selectedMode: WritableStore<number> = store(0);
 
     // Direct control
@@ -99,7 +163,7 @@ export class PeepSimModel {
     readonly moveToolActive: WritableStore<boolean> = store(false);
     readonly guestFrozen: WritableStore<boolean> = store(false);
 
-    // Queued control
+    // Sequence control
     readonly queuePaused: WritableStore<boolean> = store(true);
     readonly actionQueue: WritableStore<QueuedAction[]> = store<QueuedAction[]>([]);
     readonly queueListItems: WritableStore<string[][]> = store<string[][]>([]);
@@ -127,7 +191,7 @@ export class PeepSimModel {
     readonly selectedQueueActionIndex: WritableStore<number> = store(0);
     readonly queueDuration: WritableStore<number> = store(3);
 
-    // Guest list (replaces dropdown)
+    // Guest list (custom picker replaces dropdown)
     readonly guestListVisible: WritableStore<boolean> = store(false);
     readonly guestListViewItems: WritableStore<string[][]> = store<string[][]>([]);
     readonly selectedGuestName: Store<string> = compute(
@@ -144,8 +208,48 @@ export class PeepSimModel {
     actionPlayInterval: number | null = null;
 
     // Main window position (updated each tick for popup positioning)
-    mainWindowX: number = 0;
-    mainWindowY: number = 0;
-    mainWindowWidth: number = 300;
+    mainWindowX = 0;
+    mainWindowY = 0;
+    mainWindowWidth = 300;
 
+    // Guest signal subscriptions
+    private _unsubs: (() => void)[] = [];
+
+    /** Unsubscribe from old guest, subscribe to new guest's signals. */
+    bindToGuest(gs: GuestState | null): void {
+        for (const unsub of this._unsubs) unsub();
+        this._unsubs = [];
+
+        if (!gs) {
+            this.selectedMode.set(0);
+            this.actionQueue.set([]);
+            this.queuePaused.set(true);
+            this.queueExecutingIndex.set(-1);
+            this.keepSteps.set(false);
+            this.loopQueue.set(false);
+            this.heldDirection.set(-1);
+            this.queueListItems.set([]);
+            return;
+        }
+
+        // Bridge each signal → FlexUI store (syncs initial value + subscribes)
+        this._unsubs.push(
+            bridge(gs.mode, { set: (m: GuestMode) => this.selectedMode.set(MODE_INDEX[m]) }),
+            bridge(gs.queuePaused, this.queuePaused),
+            bridge(gs.actionQueue, this.actionQueue),
+            bridge(gs.queueExecutingIndex, this.queueExecutingIndex),
+            bridge(gs.keepSteps, this.keepSteps),
+            bridge(gs.loopQueue, this.loopQueue),
+            bridge(gs.heldDirection, this.heldDirection),
+        );
+
+        // Rebuild queue display list when relevant signals change
+        rebuildQueueList(this, gs);
+        const rebuild = () => rebuildQueueList(this, gs);
+        this._unsubs.push(
+            gs.actionQueue.subscribe(rebuild),
+            gs.queueExecutingIndex.subscribe(rebuild),
+            gs.queuePaused.subscribe(rebuild),
+        );
+    }
 }

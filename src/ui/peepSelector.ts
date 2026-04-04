@@ -14,8 +14,8 @@ import {
     activatePickerTool, handleModeChange
 } from "../actions";
 
-var guestPickerWindow: WindowTemplate | null = null;
-var guestPickerNative: any = null;
+let guestPickerWindow: WindowTemplate | null = null;
+let guestPickerNative: any = null;
 
 function openGuestPicker(model: PeepSimModel): void {
     if (guestPickerWindow) {
@@ -28,7 +28,7 @@ function openGuestPicker(model: PeepSimModel): void {
         height: 200,
         position: {
             x: model.mainWindowX + model.mainWindowWidth,
-            y: model.mainWindowY
+            y: model.mainWindowY,
         },
         colours: [Colour.Grey, Colour.OliveGreen],
         content: [
@@ -38,13 +38,13 @@ function openGuestPicker(model: PeepSimModel): void {
                 isStriped: true,
                 columns: [
                     { header: "Guest" },
-                    { header: "Mode", width: "70px" }
+                    { header: "Mode", width: "70px" },
                 ],
                 items: model.guestListViewItems,
                 canSelect: true,
                 onClick: (row: number) => {
-                    var list = model.guestList.get();
-                    var entry = list[row];
+                    const list = model.guestList.get();
+                    const entry = list[row];
                     if (!entry) return;
                     if (entry.id === model.selectedGuestId.get()) return;
                     releaseDirectGuest(model);
@@ -53,19 +53,18 @@ function openGuestPicker(model: PeepSimModel): void {
                     selectGuest(model, entry.id);
                     refreshGuestList(model);
                     closeGuestPicker();
-                }
-            })
+                },
+            }),
         ],
         onOpen: () => {
-            // Cache native window reference for efficient repositioning
-            for (var wid = 0; wid < 128; wid++) {
+            for (let wid = 0; wid < 128; wid++) {
                 try {
-                    var w = ui.getWindow(wid);
-                    if (w && w.title === "Select Guest") {
+                    const w = ui.getWindow(wid);
+                    if (w?.title === "Select Guest") {
                         guestPickerNative = w;
                         break;
                     }
-                } catch (_e) { break; }
+                } catch { break; }
             }
         },
         onUpdate: () => {
@@ -78,7 +77,7 @@ function openGuestPicker(model: PeepSimModel): void {
             guestPickerWindow = null;
             guestPickerNative = null;
             model.guestListVisible.set(false);
-        }
+        },
     });
     guestPickerWindow.open();
 }
@@ -96,39 +95,31 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
             horizontal([
                 viewport({
                     target: model.guestTarget,
-                    height: "130px"
+                    height: "130px",
                 }),
                 vertical({
                     width: "24px",
                     content: [
                         toggle({
                             image: "eyedropper" as any,
-                            width: "24px",
-                            height: "24px",
+                            width: "24px", height: "24px",
                             tooltip: "Pick a guest from the park",
                             isPressed: model.pickerActive,
                             onChange: (pressed: boolean) => {
-                                if (pressed) {
-                                    activatePickerTool(model);
-                                } else {
-                                    deactivatePickerTool(model);
-                                }
-                            }
+                                if (pressed) activatePickerTool(model);
+                                else deactivatePickerTool(model);
+                            },
                         }),
                         button({
                             image: "locate" as any,
-                            width: "24px",
-                            height: "24px",
+                            width: "24px", height: "24px",
                             tooltip: "Find selected guest",
                             disabled: model.noGuest,
-                            onClick: () => {
-                                findGuest(model);
-                            }
+                            onClick: () => findGuest(model),
                         }),
                         button({
-                            image: 29448, // SPR_G2_PEEP_SPAWN
-                            width: "24px",
-                            height: "24px",
+                            image: 29448,
+                            width: "24px", height: "24px",
                             tooltip: "Spawn a new guest",
                             onClick: () => {
                                 releaseDirectGuest(model);
@@ -138,12 +129,11 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                                 freezeGuest(model);
                                 syncAccessoriesFromGuest(model);
                                 refreshGuestList(model);
-                            }
+                            },
                         }),
                         toggle({
                             image: "search" as any,
-                            width: "24px",
-                            height: "24px",
+                            width: "24px", height: "24px",
                             tooltip: "Select a guest from the list",
                             isPressed: model.guestListVisible,
                             onChange: (pressed: boolean) => {
@@ -153,29 +143,29 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                                 } else {
                                     closeGuestPicker();
                                 }
-                            }
-                        })
-                    ]
-                })
+                            },
+                        }),
+                    ],
+                }),
             ]),
             horizontal([
                 label({
                     text: model.selectedGuestName,
                     width: "1w",
-                    height: "16px"
+                    height: "16px",
                 }),
                 dropdown({
                     width: "90px",
                     items: MODE_LABELS,
                     selectedIndex: model.selectedMode,
                     disabled: model.noGuest,
-                    onChange: function (index: number) {
+                    onChange: (index: number) => {
                         if (index === model.selectedMode.get()) return;
                         handleModeChange(model, index);
-                    }
+                    },
                 }),
-                label({ text: "", width: "24px" })
-            ])
-        ]
+                label({ text: "", width: "24px" }),
+            ]),
+        ],
     });
 }

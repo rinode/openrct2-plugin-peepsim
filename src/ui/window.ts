@@ -5,16 +5,12 @@ import {
     syncAppearanceFromGuest, refreshActionAnimations,
     releaseDirectGuest, resetState
 } from "../guest";
-import {
-    stopDirectionWalk, deactivatePickerTool
-} from "../actions";
-import { projectToUI, projectIfDirty } from "../state";
+import { stopDirectionWalk, deactivatePickerTool } from "../actions";
 import { initPauseSprites } from "./pauseButton";
 import { controlTab } from "./controlTab";
 import { closeGuestPicker } from "./peepSelector";
 import { appearanceTab } from "./appearanceTab";
 import { savePluginState } from "../storage";
-
 
 export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
     initPauseSprites();
@@ -27,26 +23,27 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
         onOpen: () => {
             resetState(model);
             refreshGuestList(model);
-            projectToUI(model);
         },
         onUpdate: () => {
             // Cache main window position only when guest picker is open
             if (model.guestListVisible.get()) {
-                for (var wid = 0; wid < 128; wid++) {
+                for (let wid = 0; wid < 128; wid++) {
                     try {
-                        var w = ui.getWindow(wid);
-                        if (w && w.title === "PeepSim") {
+                        const w = ui.getWindow(wid);
+                        if (w?.title === "PeepSim") {
                             model.mainWindowX = w.x;
                             model.mainWindowY = w.y;
                             model.mainWindowWidth = w.width;
                             break;
                         }
-                    } catch (_e) { break; }
+                    } catch { break; }
                 }
             }
-            enforceAccessories(model);
-            projectIfDirty(model);
-            syncAppearanceFromGuest(model);
+            // Only sync appearance when a guest is selected
+            if (model.selectedGuestId.get() !== null) {
+                enforceAccessories(model);
+                syncAppearanceFromGuest(model);
+            }
         },
         onClose: () => {
             closeGuestPicker();
@@ -56,9 +53,7 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
                 context.clearInterval(model.actionPlayInterval);
                 model.actionPlayInterval = null;
             }
-            if (ui.tool) {
-                ui.tool.cancel();
-            }
+            if (ui.tool) ui.tool.cancel();
             releaseDirectGuest(model);
             savePluginState();
             resetState(model);
@@ -70,13 +65,13 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
             tab({
                 image: 5577,
                 height: "auto",
-                content: controlTab(model)
+                content: controlTab(model),
             }),
             tab({
                 image: { frameBase: 5221, frameCount: 8, frameDuration: 4 },
                 height: "auto",
-                content: appearanceTab(model)
-            })
-        ]
+                content: appearanceTab(model),
+            }),
+        ],
     });
 }

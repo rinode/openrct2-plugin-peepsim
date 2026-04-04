@@ -1,6 +1,8 @@
 # PeepSim - OpenRCT2 Plugin
 
-A guest control plugin for OpenRCT2. Select or spawn guests, move them around the park, queue up action sequences, dress them up, and save everything into the park file.
+A guest control plugin for OpenRCT2. Select or spawn guests, move them around the park, sequence action routines, dress them up, and save everything into the park file.
+
+![PeepSim demo](peepsim.gif)
 
 ## Features
 
@@ -9,10 +11,10 @@ A guest control plugin for OpenRCT2. Select or spawn guests, move them around th
 Each guest can be in one of three modes:
 
 - **Uncontrolled** - guest walks freely under normal AI control
-- **Direct Control** (dc) - manual movement and animation, guest idles when not given input
-- **Queued Control** (qc) - build and play back sequences of moves and timed animations
+- **Direct Control** - manual movement and animation, guest idles when not given input
+- **Sequence** - build and play back sequences of moves and timed animations
 
-The guest dropdown shows a `(dc)` or `(qc)` suffix so you can tell which mode each guest is in. You can manage multiple controlled guests at the same time.
+You can manage multiple controlled guests at the same time.
 
 ### Peep Panel
 
@@ -22,25 +24,32 @@ Both tabs share a panel at the top with:
 - Eyedropper tool to pick a guest from the park
 - Locate button to scroll the main viewport to the guest
 - Spawn button to create a new guest in direct control mode
-- Guest and mode dropdowns
+- Search button to open a guest picker popup (sticks to the main window)
+- Guest name label and mode dropdown
 
 ### Direct Control
+
+![Direct Control](peepsim-tab1-direct.png)
 
 - **Move To** - click a tile on the map to walk the guest there
 - **Directional arrows** - walk NE/SE/SW/NW continuously
 - **Idle toggle** - freeze or unfreeze the guest in place
 - **Action dropdown** - pick an animation and perform it
 
-### Queued Control
+### Sequence Control
 
-- Build a queue of move and animation steps that play one after another
+![Sequence Control](peepsim-tab1-sequence.png)
+
+- Build a sequence of move and animation steps that play one after another
 - Play/pause with a status marker in the list
-- Optional auto-delete to remove steps after they finish
-- Optional loop to restart the queue from the beginning
+- Optional auto-clear to remove steps after they finish
+- Optional loop to restart the sequence from the beginning
 - Add moves with "+ Move To" or timed animations with "+ Add"
-- Delete individual steps or clear the whole queue
+- Delete individual steps or clear the whole sequence
 
 ### Appearance
+
+![Appearance](peepsim-tab2.png)
 
 - Shirt and pants colour pickers
 - Accessory dropdown: None, Hat, Sunglasses, Balloon, or Umbrella
@@ -48,7 +57,7 @@ Both tabs share a panel at the top with:
 
 ### Save and Load
 
-All guest modes and queues are saved into the park file automatically. State is saved on park save and window close, and restored when the window opens or a park is loaded.
+All guest modes and sequences are saved into the park file automatically. State is saved on park save and window close, and restored when the window opens or a park is loaded.
 
 ## Installation
 
@@ -80,8 +89,8 @@ npm run develop
 Releases are automated with GitHub Actions. Push a version tag to trigger a build:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 ## License
