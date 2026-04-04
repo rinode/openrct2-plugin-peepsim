@@ -12,7 +12,7 @@ Each guest can be in one of three modes:
 
 - **Uncontrolled** - guest walks freely under normal AI control
 - **Direct Control** - manual movement and animation, guest idles when not given input
-- **Sequence** - build and play back sequences of moves and timed animations
+- **Sequence Control** - build and play back sequences of moves and timed animations
 
 You can manage multiple controlled guests at the same time.
 
