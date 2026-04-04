@@ -447,9 +447,13 @@ export function performSelectedAction(model: PeepSimModel): void {
 
 // ── Mode transitions ───────────────────────────────────────────────────
 
+var _changingMode = false;
+
 export function handleModeChange(model: PeepSimModel, newModeIndex: number): void {
+    if (_changingMode) return;
     const oldModeIndex = model.selectedMode.get();
     if (oldModeIndex === newModeIndex) return;
+    _changingMode = true;
 
     // Clean up old mode
     if (oldModeIndex === 1) {
@@ -491,4 +495,5 @@ export function handleModeChange(model: PeepSimModel, newModeIndex: number): voi
 
     projectToUI(model);
     refreshGuestList(model);
+    _changingMode = false;
 }

@@ -8,17 +8,13 @@ import {
     GuestEntry,
     createGuestState
 } from "./model";
-import { guestStates, ensureGuestState, projectToUI, setProjecting } from "./state";
+import { guestStates, ensureGuestState, projectToUI } from "./state";
 
 export function getSelectedGuest(model: PeepSimModel): Guest | null {
     const id = model.selectedGuestId.get();
     if (id === null) return null;
     const entity = map.getEntity(id);
-    if (!entity || entity.type !== "guest") {
-        model.selectedGuestId.set(null);
-        model.guestTarget.set(null);
-        return null;
-    }
+    if (!entity || entity.type !== "guest") return null;
     return entity as Guest;
 }
 
@@ -93,14 +89,31 @@ export function refreshGuestList(model: PeepSimModel): void {
         }
     }
 
+    // Build dropdown items (plain strings, no compute chain)
+    var items: string[] = ["(none)"];
+    for (var j = 0; j < list.length; j++) {
+        var g = list[j];
+        var gs2 = guestStates[g.id];
+        var suffix = "";
+        if (gs2) {
+            if (gs2.mode === "direct") suffix = " (dc)";
+            else if (gs2.mode === "queued") suffix = " (qc)";
+        }
+        items.push(g.name + suffix);
+    }
+
     const newIdx = (currentId !== null)
         ? (list.findIndex(g => g.id === currentId) + 1) || 0
         : 0;
 
-    setProjecting(true);
     model.guestList.set(list);
+    model.guestDropdownItems.set(items);
+    // Force re-apply: items.set() resets widget to 0, so if the store
+    // already has newIdx, .set() is a no-op. Sentinel forces the update.
+    if (model.selectedGuestIndex.get() === newIdx) {
+        model.selectedGuestIndex.set(-1);
+    }
     model.selectedGuestIndex.set(newIdx);
-    setProjecting(false);
 }
 
 // ── Find guest ─────────────────────────────────────────────────────────
@@ -263,6 +276,7 @@ export function resetState(model: PeepSimModel): void {
     model.guestTarget.set(null);
     model.selectedGuestIndex.set(0);
     model.guestList.set([]);
+    model.guestDropdownItems.set(["(none)"]);
     model.accessoryActive.set(null);
     model.accessoryColour.set(0);
     model.accessoryIndex.set(0);

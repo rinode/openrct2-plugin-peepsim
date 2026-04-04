@@ -1,11 +1,10 @@
 import {
-    button, compute, dropdown, groupbox, horizontal, toggle, vertical, viewport,
+    button, dropdown, groupbox, horizontal, toggle, vertical, viewport,
     WidgetCreator, FlexiblePosition
 } from "openrct2-flexui";
 import { PeepSimModel, MODE_LABELS } from "../model";
-import { guestStates, ensureGuestState } from "../state";
 import {
-    selectGuest, spawnGuest, refreshGuestList, freezeGuest,
+    spawnGuest, refreshGuestList, freezeGuest,
     syncAccessoriesFromGuest, releaseDirectGuest, findGuest
 } from "../guest";
 import {
@@ -70,32 +69,13 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
             horizontal([
                 dropdown({
                     width: "1w",
-                    items: compute(model.guestList, function (list) {
-                        var items = ["(none)"];
-                        for (var i = 0; i < list.length; i++) {
-                            var g = list[i];
-                            var gs = guestStates[g.id];
-                            var suffix = "";
-                            if (gs) {
-                                if (gs.mode === "direct") suffix = " (dc)";
-                                else if (gs.mode === "queued") suffix = " (qc)";
-                            }
-                            items.push(g.name + suffix);
-                        }
-                        return items;
-                    }),
+                    items: model.guestDropdownItems,
                     selectedIndex: model.selectedGuestIndex,
-                    onChange: function (index: number) {
-                        var list = model.guestList.get();
-                        if (index <= 0 || index > list.length) return;
-                        var newId = list[index - 1].id;
-                        if (newId === model.selectedGuestId.get()) return;
-                        releaseDirectGuest(model);
-                        stopDirectionWalk(model);
-                        deactivateMoveTool(model);
-                        model.selectedGuestIndex.set(index);
-                        ensureGuestState(newId);
-                        selectGuest(model, newId);
+                    onChange: function (_index: number) {
+                        // Disabled: FlexUI fires spurious onChange with arbitrary
+                        // indices at unpredictable times (items.set(), tab switches,
+                        // widget re-creation). Cannot distinguish from real clicks.
+                        // Guest switching via picker tool / spawn button instead.
                     }
                 }),
                 dropdown({

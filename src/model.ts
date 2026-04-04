@@ -87,6 +87,7 @@ export class PeepSimModel {
     // Guest selection
     readonly selectedGuestId: WritableStore<number | null> = store<number | null>(null);
     readonly guestList: WritableStore<GuestEntry[]> = store<GuestEntry[]>([]);
+    readonly guestDropdownItems: WritableStore<string[]> = store<string[]>(["(none)"]);
     readonly selectedGuestIndex: WritableStore<number> = store(0);
     readonly guestTarget: WritableStore<number | null> = store<number | null>(null);
 
@@ -133,5 +134,5 @@ export class PeepSimModel {
     // UI-only timer handles
     directionInterval: number | null = null;
     actionPlayInterval: number | null = null;
-    guestRefreshCounter = 0;
+
 }

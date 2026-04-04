@@ -28,18 +28,6 @@ export function resetAllGuestStates(): void {
     }
 }
 
-// ── Projection guard (prevents dropdown onChange during store updates) ──
-
-var _projecting = false;
-
-export function isProjecting(): boolean {
-    return _projecting;
-}
-
-export function setProjecting(value: boolean): void {
-    _projecting = value;
-}
-
 // ── Dirty flag (executor → UI projection) ─────────────────────────────
 
 var _projectionDirty = false;
@@ -66,13 +54,12 @@ function modeToIndex(mode: GuestMode): number {
 /** Push the selected guest's state into the UI stores. */
 export function projectToUI(model: PeepSimModel): void {
     _projectionDirty = false;
-    setProjecting(true);
 
     var id = model.selectedGuestId.get();
-    if (id === null) { projectToUIDefaults(model); setProjecting(false); return; }
+    if (id === null) { projectToUIDefaults(model); return; }
 
     var gs = guestStates[id];
-    if (!gs) { projectToUIDefaults(model); setProjecting(false); return; }
+    if (!gs) { projectToUIDefaults(model); return; }
 
     // Primitives (FlexUI .set() skips if value unchanged)
     model.selectedMode.set(modeToIndex(gs.mode));
@@ -103,8 +90,6 @@ export function projectToUI(model: PeepSimModel): void {
     if (listDirty) {
         refreshQueueListFromState(model, gs);
     }
-
-    setProjecting(false);
 }
 
 /** Reset all projected stores to defaults. */

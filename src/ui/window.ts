@@ -14,7 +14,6 @@ import { controlTab } from "./controlTab";
 import { appearanceTab } from "./appearanceTab";
 import { savePluginState } from "../storage";
 
-const GUEST_REFRESH_INTERVAL = 80;
 
 export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
     initPauseSprites();
@@ -25,7 +24,6 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
         padding: 5,
         colours: [Colour.Grey, Colour.OliveGreen, Colour.OliveGreen],
         onOpen: () => {
-            model.guestRefreshCounter = 0;
             resetState(model);
             refreshGuestList(model);
             projectToUI(model);
@@ -33,11 +31,6 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
         onUpdate: () => {
             enforceAccessories(model);
             projectIfDirty(model);
-            model.guestRefreshCounter++;
-            if (model.guestRefreshCounter >= GUEST_REFRESH_INTERVAL) {
-                model.guestRefreshCounter = 0;
-                refreshGuestList(model);
-            }
             syncAppearanceFromGuest(model);
         },
         onClose: () => {
@@ -50,7 +43,6 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
             if (ui.tool) {
                 ui.tool.cancel();
             }
-            // Release direct-mode guest (unfreezes + removes state)
             releaseDirectGuest(model);
             savePluginState();
             resetState(model);
