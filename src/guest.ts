@@ -70,17 +70,29 @@ export function spawnGuest(model: PeepSimModel): Guest | null {
 }
 
 export function refreshGuestList(model: PeepSimModel): void {
+    const currentId = model.selectedGuestId.get();
     var ids = Object.keys(guestStates);
     var list: GuestEntry[] = [];
     for (var i = 0; i < ids.length; i++) {
         var id = parseInt(ids[i], 10);
         if (isNaN(id)) continue;
+        var gs = guestStates[id];
+        // Skip uncontrolled guests unless currently selected
+        if (gs && gs.mode === "uncontrolled" && id !== currentId) continue;
         var entity = map.getEntity(id);
         if (!entity || entity.type !== "guest") continue;
         list.push({ id: id, name: (entity as Guest).name });
     }
 
-    const currentId = model.selectedGuestId.get();
+    // If the selected guest is valid but not in guestStates (uncontrolled),
+    // include it so the dropdown doesn't eject the selection.
+    if (currentId !== null && !guestStates[currentId]) {
+        var entity = map.getEntity(currentId);
+        if (entity && entity.type === "guest") {
+            list.push({ id: currentId, name: (entity as Guest).name });
+        }
+    }
+
     const newIdx = (currentId !== null)
         ? (list.findIndex(g => g.id === currentId) + 1) || 0
         : 0;
@@ -149,7 +161,7 @@ export function setAccessory(model: PeepSimModel, type: AccessoryType | null): v
         }
     }
 
-    if (model.selectedMode.get() !== 0) {
+    if (model.selectedMode.get() === 1) {
         freezeGuest(model);
     }
 }

@@ -56,9 +56,7 @@ export function createPeepSimWindow(model: PeepSimModel): WindowTemplate {
             resetState(model);
         },
         onTabChange: () => {
-            refreshGuestList(model);
             refreshActionAnimations(model);
-            projectToUI(model);
         },
         tabs: [
             tab({

@@ -66,13 +66,13 @@ function modeToIndex(mode: GuestMode): number {
 /** Push the selected guest's state into the UI stores. */
 export function projectToUI(model: PeepSimModel): void {
     _projectionDirty = false;
-    _projecting = true;
+    setProjecting(true);
 
     var id = model.selectedGuestId.get();
-    if (id === null) { projectToUIDefaults(model); _projecting = false; return; }
+    if (id === null) { projectToUIDefaults(model); setProjecting(false); return; }
 
     var gs = guestStates[id];
-    if (!gs) { projectToUIDefaults(model); _projecting = false; return; }
+    if (!gs) { projectToUIDefaults(model); setProjecting(false); return; }
 
     // Primitives (FlexUI .set() skips if value unchanged)
     model.selectedMode.set(modeToIndex(gs.mode));
@@ -104,7 +104,7 @@ export function projectToUI(model: PeepSimModel): void {
         refreshQueueListFromState(model, gs);
     }
 
-    _projecting = false;
+    setProjecting(false);
 }
 
 /** Reset all projected stores to defaults. */

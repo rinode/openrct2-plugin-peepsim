@@ -1,12 +1,12 @@
 import {
-    button, compute, dropdown, groupbox, horizontal, toggle, twoway, vertical, viewport,
+    button, compute, dropdown, groupbox, horizontal, toggle, vertical, viewport,
     WidgetCreator, FlexiblePosition
 } from "openrct2-flexui";
 import { PeepSimModel, MODE_LABELS } from "../model";
-import { guestStates, ensureGuestState, isProjecting } from "../state";
+import { guestStates, ensureGuestState } from "../state";
 import {
     selectGuest, spawnGuest, refreshGuestList, freezeGuest,
-    syncAccessoriesFromGuest, releaseDirectGuest, resetState, findGuest
+    syncAccessoriesFromGuest, releaseDirectGuest, findGuest
 } from "../guest";
 import {
     stopDirectionWalk, deactivateMoveTool, deactivatePickerTool,
@@ -70,7 +70,7 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
             horizontal([
                 dropdown({
                     width: "1w",
-                    items: compute(model.guestList, model.selectedMode, function (list) {
+                    items: compute(model.guestList, function (list) {
                         var items = ["(none)"];
                         for (var i = 0; i < list.length; i++) {
                             var g = list[i];
@@ -84,20 +84,18 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                         }
                         return items;
                     }),
-                    selectedIndex: twoway(model.selectedGuestIndex),
+                    selectedIndex: model.selectedGuestIndex,
                     onChange: function (index: number) {
-                        if (isProjecting()) return;
                         var list = model.guestList.get();
-                        var newId = (index > 0 && index <= list.length) ? list[index - 1].id : null;
+                        if (index <= 0 || index > list.length) return;
+                        var newId = list[index - 1].id;
+                        if (newId === model.selectedGuestId.get()) return;
                         releaseDirectGuest(model);
                         stopDirectionWalk(model);
                         deactivateMoveTool(model);
-                        if (newId !== null) {
-                            ensureGuestState(newId);
-                            selectGuest(model, newId);
-                        } else {
-                            resetState(model);
-                        }
+                        model.selectedGuestIndex.set(index);
+                        ensureGuestState(newId);
+                        selectGuest(model, newId);
                     }
                 }),
                 dropdown({
@@ -106,6 +104,7 @@ export function peepSelector(model: PeepSimModel): WidgetCreator<FlexiblePositio
                     selectedIndex: model.selectedMode,
                     disabled: model.noGuest,
                     onChange: function (index: number) {
+                        if (index === model.selectedMode.get()) return;
                         handleModeChange(model, index);
                     }
                 })

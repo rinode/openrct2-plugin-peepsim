@@ -145,6 +145,7 @@ export function stopGlobalExecutor(): void {
 }
 
 function finishGuestAction(gs: GuestState, guest: Guest): void {
+    freezeGuestEntity(guest);
     gs.currentAction = null;
     gs.moveTickCount = 0;
     gs.lastMoveDist = -1;
@@ -193,7 +194,7 @@ function executeGuestTick(id: number, gs: GuestState): void {
             var dy = guest.y - targetY;
             var dist = Math.sqrt(dx * dx + dy * dy);
 
-            if (dist < 32) {
+            if (dist < 8) {
                 finishGuestAction(gs, guest);
                 return;
             }
@@ -296,6 +297,10 @@ export function startDirectionWalk(model: PeepSimModel, direction: number): void
     }
 
     model.heldDirection.set(direction);
+    var id = model.selectedGuestId.get();
+    if (id !== null && guestStates[id]) {
+        guestStates[id].heldDirection = direction;
+    }
     directWalk(model, direction);
 
     model.directionInterval = context.setInterval(() => {
@@ -307,6 +312,10 @@ export function startDirectionWalk(model: PeepSimModel, direction: number): void
 export function stopDirectionWalk(model: PeepSimModel): boolean {
     const wasActive = model.heldDirection.get() >= 0;
     model.heldDirection.set(-1);
+    var id = model.selectedGuestId.get();
+    if (id !== null && guestStates[id]) {
+        guestStates[id].heldDirection = -1;
+    }
     if (model.directionInterval !== null) {
         context.clearInterval(model.directionInterval);
         model.directionInterval = null;
@@ -327,7 +336,7 @@ export function activateMoveTool(model: PeepSimModel): void {
     ui.activateTool({
         id: "peepsim-move",
         cursor: "walk_down",
-        filter: ["terrain"],
+        filter: ["footpath", "terrain"],
         onDown: (e: ToolEventArgs) => {
             if (e.mapCoords) {
                 const tileX = Math.floor(e.mapCoords.x / 32);
@@ -337,6 +346,7 @@ export function activateMoveTool(model: PeepSimModel): void {
                     directMove(model, tileX, tileY);
                 } else if (mode === 2) {
                     addAction(model, { type: "move", target: { x: tileX, y: tileY } });
+                    deactivateMoveTool(model);
                 }
             }
         },
@@ -376,6 +386,7 @@ export function activatePickerTool(model: PeepSimModel): void {
             ensureGuestState(e.entityId);
             selectGuest(model, e.entityId);
             refreshGuestList(model);
+            deactivatePickerTool(model);
         },
         onFinish: () => {
             model.pickerActive.set(false);
