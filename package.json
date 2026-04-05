@@ -1,6 +1,6 @@
 {
   "name": "openrct2-plugin-peepsim",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "A guest simulator plugin for OpenRCT2",
   "type": "module",
   "scripts": {
